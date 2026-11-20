@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agroai.local/schemas/model-metadata-v1.json",
+  "title": "AgroAI Model Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "model_name", "model_version", "model_file", "model_sha256", "labels_file", "labels_sha256", "output_activation", "input", "evaluation"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "model_name": {"type": "string", "minLength": 1, "maxLength": 100},
+    "model_version": {"type": "string", "minLength": 1, "maxLength": 100},
+    "model_file": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.(keras|h5)$"},
+    "model_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "labels_file": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.json$"},
+    "labels_sha256": {"type": "string", "pattern": "^[a-fA-F0-9]{64}$"},
+    "output_activation": {"enum": ["SOFTMAX", "LOGITS"]},
+    "input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["width", "height", "channels", "color", "normalization"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "height": {"type": "integer", "minimum": 1, "maximum": 4096},
+        "channels": {"const": 3}, "color": {"const": "RGB"},
+        "normalization": {"enum": ["NONE", "ZERO_ONE", "MINUS_ONE_TO_ONE", "MEAN_STD"]},
+        "mean": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "std": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number", "exclusiveMinimum": 0}}
+      }
+    },
+    "evaluation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "dataset_name", "dataset_license", "evaluated_at", "validation_split", "metrics", "limitations"],
+      "properties": {
+        "status": {"enum": ["EVALUATED", "NOT_EVALUATED"]},
+        "dataset_name": {"type": "string", "minLength": 1},
+        "dataset_license": {"type": "string", "minLength": 1},
+        "evaluated_at": {"type": "string", "format": "date-time"},
+        "validation_split": {"type": "string", "minLength": 1},
+        "metrics": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "number"}},
+        "limitations": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

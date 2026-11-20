@@ -1,0 +1,50 @@
+# ============================================================
+# AgroAI – Production Spring Profile
+# All sensitive values MUST be supplied via environment variables.
+# Never commit real credentials to version control.
+# ============================================================
+spring:
+  application:
+    name: agroai-backend
+
+server:
+  port: 8080
+
+agroai:
+  cors:
+    allowed-origins: "${AGROAI_ALLOWED_ORIGINS}"
+  firebase:
+    credentials-path: "${GOOGLE_APPLICATION_CREDENTIALS}"
+    project-id: "${FIREBASE_PROJECT_ID}"
+  ai-service:
+    base-url: "${AGROAI_AI_SERVICE_BASE_URL}"
+    service-key: "${AGROAI_AI_SERVICE_KEY}"
+  storage:
+    # Supported values: gcs, local, none
+    # For production use 'gcs' (Google Cloud Storage).
+    # 'local' is for development only and MUST NOT be used in production.
+    # 'none' (or unset) causes image-upload endpoints to return 503.
+    provider: "${AGROAI_STORAGE_PROVIDER:none}"
+    gcs:
+      bucket-name: "${AGROAI_GCS_BUCKET_NAME:}"
+  irrigation:
+    # Soil-moisture % below which an irrigation recommendation is generated.
+    moisture-threshold-percent: "${AGROAI_IRRIGATION_MOISTURE_THRESHOLD_PERCENT:40}"
+    # Human-readable source identifier for the threshold value (audit trail).
+    threshold-source: "${AGROAI_IRRIGATION_THRESHOLD_SOURCE:operator-manual}"
+    # Version tag for the threshold configuration.
+    threshold-version: "${AGROAI_IRRIGATION_THRESHOLD_VERSION:unconfigured}"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: WARN
+    com.agroai: INFO

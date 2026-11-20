@@ -1,0 +1,37 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: agroai-backend
+  servlet:
+    multipart:
+      max-file-size: 9MB
+      max-request-size: 10MB
+
+agroai:
+  cors:
+    allowed-origins: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
+  ai-service:
+    base-url: "${AGROAI_AI_SERVICE_BASE_URL:http://localhost:8000}"
+    timeout-ms: 5000
+    inference-timeout-ms: 20000
+    service-key: "${AGROAI_AI_SERVICE_KEY:}"
+  storage:
+    local-dir: "${AGROAI_LOCAL_IMAGE_DIR:${java.io.tmpdir}/agroai-images}"
+  monitoring:
+    max-image-bytes: 8388608
+    max-telemetry-page-size: 100
+  irrigation:
+    moisture-threshold-percent: "${AGROAI_IRRIGATION_MOISTURE_THRESHOLD_PERCENT:}"
+    threshold-source: "${AGROAI_IRRIGATION_THRESHOLD_SOURCE:}"
+    threshold-version: "${AGROAI_IRRIGATION_THRESHOLD_VERSION:unconfigured}"
+  firebase:
+    credentials-path: "${GOOGLE_APPLICATION_CREDENTIALS:}"
+    project-id: "${FIREBASE_PROJECT_ID:}"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

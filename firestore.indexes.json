@@ -1,0 +1,64 @@
+{
+  "indexes": [
+    { "collectionGroup": "field_images", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "soil_telemetry", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "soil_telemetry", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "measurementType", "order": "ASCENDING" }, { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "ai_analysis_results", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "irrigation_plans", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "field_activity", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "field_activity", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "eventType", "order": "ASCENDING" }, { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+
+    { "collectionGroup": "public_farms", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "visibility", "order": "ASCENDING" },
+      { "fieldPath": "registeredAt", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "public_farms", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "visibility", "order": "ASCENDING" },
+      { "fieldPath": "division", "order": "ASCENDING" },
+      { "fieldPath": "registeredAt", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "public_farms", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "visibility", "order": "ASCENDING" },
+      { "fieldPath": "district", "order": "ASCENDING" },
+      { "fieldPath": "registeredAt", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "public_farms", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "status", "order": "ASCENDING" },
+      { "fieldPath": "visibility", "order": "ASCENDING" },
+      { "fieldPath": "division", "order": "ASCENDING" },
+      { "fieldPath": "district", "order": "ASCENDING" },
+      { "fieldPath": "registeredAt", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

@@ -1,0 +1,76 @@
+.field-monitoring-panel {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.monitoring-record-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.monitoring-record-row button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.monitoring-filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+@media (max-width: 700px) {
+  .monitoring-soil-controls > label {
+    display: flex;
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .monitoring-soil-controls > label input {
+    flex: 1 1 120px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .monitoring-filter-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .monitoring-filter-controls > label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .monitoring-filter-controls select,
+  .monitoring-filter-controls input {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .monitoring-record-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start !important;
+    gap: 8px;
+  }
+
+  .monitoring-record-row > span:first-child {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

@@ -1,0 +1,7 @@
+# M5 Pagination and Performance Report
+
+Date: 2026-11-19. M5 assignment pagination status: PASS for local synthetic traversal; production behavior NOT TESTED.
+
+The M5 history-specific implementation and 100/1,000/5,000 emulator performance results are documented in `M5_ASSIGNMENT_PAGINATION_REPORT.md`. They are local emulator measurements and not production performance. No assignment pagination latency SLO is specified, so none is invented here.
+
+Separate AI-service local benchmark command: `ai-service/.venv/Scripts/python.exe tools/benchmark_m6.py`. Latest JSON evidence: `docs/reports/M5_M6_LOCAL_BENCHMARK_2026-11-18.json`. Environment: Windows 11, Python 3.12.13, 8 logical CPUs (CPU model and RAM not captured); deterministic synthetic 512x512 RGB PNG, 788,404 bytes. Preprocessing: n=100, median 1.120 ms, P95 1.746 ms, P99 2.040 ms, max 2.066 ms, 0 failures. In-process TestClient `POST /api/v1/inference/disease`, no-model `MODEL_UNAVAILABLE`: n=80, concurrency 8, median 68.341 ms, P95 127.689 ms, P99/max 153.091 ms, 0 failures. Peak traced Python heap 6,879,776 bytes; process RSS not measured. An earlier run in the same session yielded different timings (preprocessing median 3.108 ms; endpoint median 125.116 ms), illustrating local timing variability; only the later run is in the JSON artifact. This is a local harness, not production performance and not a model inference benchmark.

@@ -1,0 +1,190 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function membershipDocId(farmId, safeUid) {
+      return 'mbr_' + farmId + '::' + safeUid;
+    }
+
+    function hasSafeUid() {
+      return isAuthenticated() && 
+        'safeUid' in request.auth.token && 
+        request.auth.token.safeUid is string && 
+        request.auth.token.safeUid.size() > 4;
+    }
+
+    function isFarmMember(farmId) {
+      // Direct membership lookup using safeUid helper from authenticated token custom claim
+      return hasSafeUid() && 
+        exists(/databases/$(database)/documents/farm_members/$(membershipDocId(farmId, request.auth.token.safeUid))) &&
+        get(/databases/$(database)/documents/farm_members/$(membershipDocId(farmId, request.auth.token.safeUid))).data.status == 'ACTIVE';
+    }
+
+    function assignmentDocPath(fieldId, safeFarmerUid) {
+      return /databases/$(database)/documents/field_assignments/$( 'asgn_fld_' + fieldId + '::' + safeFarmerUid );
+    }
+
+    function activePairLockPath(fieldId, safeFarmerUid) {
+      return /databases/$(database)/documents/active_field_assignment_locks/$( 'asgn_fld_' + fieldId + '::' + safeFarmerUid );
+    }
+
+    function isAssignedToField(fieldId) {
+      return hasSafeUid() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'ACTIVE' &&
+        exists(/databases/$(database)/documents/fields/$(fieldId)) &&
+        get(/databases/$(database)/documents/fields/$(fieldId)).data.status == 'ACTIVE' &&
+        exists(/databases/$(database)/documents/farms/$(get(/databases/$(database)/documents/fields/$(fieldId)).data.farmId)) &&
+        get(/databases/$(database)/documents/farms/$(get(/databases/$(database)/documents/fields/$(fieldId)).data.farmId)).data.status == 'ACTIVE' &&
+        (
+          (exists(activePairLockPath(fieldId, request.auth.token.safeUid)) &&
+           get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.fieldId == fieldId &&
+           get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.farmerId == request.auth.uid &&
+           get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.farmId == get(/databases/$(database)/documents/fields/$(fieldId)).data.farmId &&
+           exists(/databases/$(database)/documents/field_assignments/$(get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.assignmentId)) &&
+           get(/databases/$(database)/documents/field_assignments/$(get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.assignmentId)).data.status == 'ACTIVE' &&
+           get(/databases/$(database)/documents/field_assignments/$(get(activePairLockPath(fieldId, request.auth.token.safeUid)).data.assignmentId)).data.farmerId == request.auth.uid) ||
+          (!exists(activePairLockPath(fieldId, request.auth.token.safeUid)) &&
+           exists(assignmentDocPath(fieldId, request.auth.token.safeUid)) &&
+           get(assignmentDocPath(fieldId, request.auth.token.safeUid)).data.status == 'ACTIVE' &&
+           get(assignmentDocPath(fieldId, request.auth.token.safeUid)).data.farmId == get(/databases/$(database)/documents/fields/$(fieldId)).data.farmId &&
+           get(assignmentDocPath(fieldId, request.auth.token.safeUid)).data.farmerId == request.auth.uid)
+        );
+    }
+
+    // --- Private Users Collection ---
+    match /users/{uid} {
+      // Strictly private: only document owner can read their private profile
+      allow read: if isOwner(uid);
+      
+      // All direct client writes DENIED.
+      // Spring Boot Admin SDK exclusively manages creation, updates, and deletion.
+      allow write: if false;
+    }
+
+    // --- Public Profiles Collection ---
+    match /public_profiles/{uid} {
+      // Any authenticated user can read public profile summaries
+      allow read: if isAuthenticated();
+      
+      // Direct client writes strictly prohibited; synchronized exclusively by Spring Boot backend
+      allow write: if false;
+    }
+
+    // --- Quarantined Public Profiles (Internal Recovery) ---
+    match /quarantined_public_profiles/{quarantineId} {
+      // Strictly backend-only; all client reads and writes denied
+      allow read, write: if false;
+    }
+
+    // --- Farms Collection ---
+    match /farms/{farmId} {
+      // Public farms readable by visitors; private farms readable only by active members
+      allow read: if resource.data.visibility == 'PUBLIC' || isFarmMember(farmId);
+      
+      // Client writes disabled; managed exclusively by Spring Boot backend
+      allow write: if false;
+    }
+
+    // --- Farm Members Collection (Roster Privacy) ---
+    match /farm_members/{membershipId} {
+      // Members of the same farm can view membership roster; non-members denied
+      allow read: if isAuthenticated() && isFarmMember(resource.data.farmId);
+      allow write: if false;
+    }
+
+    // --- Fields Collection ---
+    match /fields/{fieldId} {
+      // Farm members (Owner, Manager, Observer) or actively assigned farmers can read
+      allow read: if isAuthenticated() && (isFarmMember(resource.data.farmId) || isAssignedToField(fieldId));
+      allow write: if false;
+    }
+
+    // --- Field Assignments Collection ---
+    match /field_assignments/{assignmentId} {
+      // Assigned farmer or active farm members can view assignments
+      allow read: if isAuthenticated() && (
+        resource.data.farmerId == request.auth.uid || 
+        resource.data.farmerUid == request.auth.uid || 
+        isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // Backend-maintained uniqueness lock for the currently active farmer/field tenure.
+    match /active_field_assignment_locks/{lockId} {
+      allow read: if isAuthenticated() && (
+        resource.data.farmerId == request.auth.uid || isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // --- Assignment History Collection (Audit Trail) ---
+    match /assignment_history/{historyId} {
+      // Assigned farmer or active farm members can view assignment history
+      allow read: if isAuthenticated() && (
+        resource.data.farmerUid == request.auth.uid ||
+        isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // --- Jobs Collection ---
+    match /jobs/{jobId} {
+      // Published jobs are publicly readable; unpublished jobs readable only by active farm members
+      allow read: if resource.data.status == 'PUBLISHED' || (isAuthenticated() && isFarmMember(resource.data.farmId));
+      allow write: if false;
+    }
+
+    // --- Job Applications Collection ---
+    match /applications/{applicationId} {
+      // Candidate applicant or active farm members can read application
+      allow read: if isAuthenticated() && (
+        resource.data.applicantUid == request.auth.uid ||
+        isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // --- Application History Collection (Audit Trail) ---
+    match /application_history/{historyId} {
+      // Candidate applicant or active farm members can view application history
+      allow read: if isAuthenticated() && (
+        resource.data.applicantUid == request.auth.uid ||
+        isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // --- Application Messages Collection (Private Candidate Thread) ---
+    match /application_messages/{messageId} {
+      // Candidate applicant or active farm members can view messages
+      allow read: if isAuthenticated() && (
+        resource.data.applicantUid == request.auth.uid ||
+        isFarmMember(resource.data.farmId)
+      );
+      allow write: if false;
+    }
+
+    // Monitoring data is only exposed through the authenticated backend API.
+    match /field_images/{imageId} { allow read, write: if false; }
+    match /soil_telemetry/{readingId} { allow read, write: if false; }
+    match /ai_analysis_results/{analysisId} { allow read, write: if false; }
+    match /irrigation_plans/{planId} { allow read, write: if false; }
+    match /field_activity/{eventId} { allow read, write: if false; }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

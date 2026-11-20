@@ -1,0 +1,30 @@
+@media (max-width: 700px) {
+  .farm-section-header {
+    flex-wrap: wrap;
+    align-items: flex-start !important;
+    gap: 12px;
+  }
+
+  .farm-details-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .farm-status-summary {
+    flex-wrap: wrap;
+  }
+
+  .farm-status-summary > * {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .farm-management-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .farm-management-actions > button {
+    flex: 1 1 130px;
+  }
+}
