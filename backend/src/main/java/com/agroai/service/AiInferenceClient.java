@@ -64,7 +64,13 @@ public class AiInferenceClient {
             @SuppressWarnings("unchecked") Map<String, Object> result = response.getBody();
             return result;
         } catch (RestClientException e) {
-            throw new IllegalStateException("AI service tabular request failed or timed out", e);
+            if (e instanceof org.springframework.web.client.HttpStatusCodeException hse) {
+                org.slf4j.LoggerFactory.getLogger(AiInferenceClient.class).error(
+                        "AI service tabular inference HTTP error: status={}, body={}",
+                        hse.getStatusCode(), hse.getResponseBodyAsString(), e);
+                throw new IllegalStateException("AI service tabular request failed: " + hse.getStatusCode() + " - " + hse.getResponseBodyAsString(), e);
+            }
+            throw new IllegalStateException("AI service tabular request failed or timed out: " + e.getMessage(), e);
         }
     }
 
