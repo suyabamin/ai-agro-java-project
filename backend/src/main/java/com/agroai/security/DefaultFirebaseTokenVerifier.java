@@ -15,6 +15,9 @@ public class DefaultFirebaseTokenVerifier implements FirebaseTokenVerifier {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultFirebaseTokenVerifier.class);
 
+    @org.springframework.beans.factory.annotation.Value("${agroai.security.allow-mock-tokens:false}")
+    private boolean allowMockTokens;
+
     @Override
     public FirebaseUserDetails verifyToken(String idToken) throws FirebaseAuthenticationException {
         return verifyToken(idToken, false);
@@ -24,6 +27,33 @@ public class DefaultFirebaseTokenVerifier implements FirebaseTokenVerifier {
     public FirebaseUserDetails verifyToken(String idToken, boolean checkRevoked) throws FirebaseAuthenticationException {
         if (idToken == null || idToken.trim().isEmpty()) {
             throw new FirebaseAuthenticationException("Authorization token is missing or empty", "MISSING_TOKEN");
+        }
+
+        if (allowMockTokens && idToken.trim().startsWith("mock.jwt.token.")) {
+            String suffix = idToken.trim().substring("mock.jwt.token.".length());
+            String uid;
+            String email;
+            String name;
+            java.util.List<String> roles;
+            if (suffix.startsWith("uid.")) {
+                uid = suffix.substring("uid.".length());
+                email = uid + "@agroai.org";
+                name = "Test User " + uid;
+                roles = java.util.List.of("FARM_OWNER", "FARMER", "GENERAL_USER");
+            } else {
+                boolean isOwner = "owner".equalsIgnoreCase(suffix);
+                uid = isOwner ? "mock-owner-001" : "mock-farmer-001";
+                email = isOwner ? "owner@agroai.org" : "farmer@agroai.org";
+                name = isOwner ? "Karim Farm Owner" : "Rahim Farmer";
+                roles = isOwner
+                        ? java.util.List.of("FARM_OWNER", "GENERAL_USER")
+                        : java.util.List.of("FARMER", "GENERAL_USER");
+            }
+            java.util.Map<String, Object> claims = new java.util.HashMap<>();
+            claims.put("safeUid", uid);
+            claims.put("roles", roles);
+            claims.put("role", suffix);
+            return new FirebaseUserDetails(uid, email, name, true, claims);
         }
 
         if (FirebaseApp.getApps().isEmpty()) {

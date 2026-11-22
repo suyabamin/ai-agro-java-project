@@ -10,13 +10,15 @@ spring:
       max-request-size: 10MB
 
 agroai:
+  security:
+    allow-mock-tokens: "${AGROAI_ALLOW_MOCK_TOKENS:true}"
   cors:
     allowed-origins: "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
   ai-service:
     base-url: "${AGROAI_AI_SERVICE_BASE_URL:http://localhost:8000}"
     timeout-ms: 5000
     inference-timeout-ms: 20000
-    service-key: "${AGROAI_AI_SERVICE_KEY:}"
+    service-key: "${AGROAI_AI_SERVICE_KEY:agroai-local-dev-key-2026}"
   storage:
     local-dir: "${AGROAI_LOCAL_IMAGE_DIR:${java.io.tmpdir}/agroai-images}"
   monitoring:

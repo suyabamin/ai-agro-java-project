@@ -11,6 +11,8 @@ server:
   port: 8080
 
 agroai:
+  security:
+    allow-mock-tokens: false
   cors:
     allowed-origins: "${AGROAI_ALLOWED_ORIGINS}"
   firebase:
