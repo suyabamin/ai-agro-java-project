@@ -215,6 +215,69 @@ Root causes identified and fixed:
   - All 10 Vitest test suites (76/76 unit tests) pass without regression.
   - Approved Farmer Selection workflow verified: manual UID input replaced with searchable approved candidate selector (`CreateAssignmentPage`), verified against 39 backend tests and 76 frontend tests. See [APPROVED_FARMER_SELECTION_IMPLEMENTATION_REPORT.md](docs/reports/APPROVED_FARMER_SELECTION_IMPLEMENTATION_REPORT.md).
 
+## Critical Performance, UI Freeze & Loading Experience Remediation
+**Status:** COMPLETE / VERIFIED
+**Root Cause Audit:** [docs/reports/AGROAI_PERFORMANCE_ROOT_CAUSE_AUDIT.md](docs/reports/AGROAI_PERFORMANCE_ROOT_CAUSE_AUDIT.md)
+**Remediation Report:** [docs/reports/AGROAI_PERFORMANCE_REMEDIATION_REPORT.md](docs/reports/AGROAI_PERFORMANCE_REMEDIATION_REPORT.md)
+**Loading UX Report:** [docs/reports/AGROAI_LOADING_UX_IMPLEMENTATION_REPORT.md](docs/reports/AGROAI_LOADING_UX_IMPLEMENTATION_REPORT.md)
+**Date:** 2026-11-22
+
+- [x] **Telemetry Batch Endpoint:** Added `POST /api/v1/farms/{farmId}/fields/{fieldId}/monitoring/telemetry/batch` in Spring Boot backend and `SoilTelemetryService.submitBatch`. Verifies write access once per batch and persists all readings atomically.
+- [x] **Asynchronous AI Decoupling:** Refactored `AgriculturalAnalysisService.create` to create an initial record with status `PENDING`, return an immediate 201 response, execute tabular inference asynchronously, and transition to `PROCESSING -> COMPLETED / FAILED / INSUFFICIENT_DATA`.
+- [x] **Analysis Status & History Endpoints:** Added `GET /agricultural-analyses/{analysisId}` and `GET /agricultural-analyses` in `FieldMonitoringController` to support non-blocking frontend polling and historical evidence retrieval.
+- [x] **Farmer Telemetry Submission Optimization:** Refactored `FarmerFieldDetailsPage.tsx` `handleSubmitData` to submit all 8 readings in a single batch (<150ms), unblocking the UI button immediately. Initiates async AI analysis and non-blockingly polls status with automated unmount cleanup (`clearInterval`).
+- [x] **Form Error Recovery & Data Retention:** Ensured telemetry input fields are not wiped upon submission errors, allowing users to modify out-of-range values without re-typing.
+- [x] **Route-Level Code Splitting:** Converted all 50+ route pages in `frontend/src/App.tsx` from static imports to `React.lazy()` wrapped in `<Suspense fallback={<PageSkeletonLoader />}>`.
+- [x] **Bundle Optimization:** Configured Rollup `manualChunks` in `vite.config.ts`, reducing initial JavaScript entry bundle from **1,419.88 kB** to **55.58 kB** (**96.1% reduction**).
+- [x] **Accessible Route Transition & Skeleton UX:** Added `RouteTransitionLoader` (top progress bar) and `PageSkeletonLoader` with full `@media (prefers-reduced-motion: reduce)` support.
+- [x] **Comprehensive Automated Verification:**
+  - Backend: 284/284 tests passed (`BUILD SUCCESS`).
+  - Frontend: 80/80 Vitest tests passed.
+  - AI Service: 24/24 pytest tests passed.
+  - TypeScript: 0 errors (`tsc -b`).
+
+## Farm-Wise AI Insights & Dataset Model Training Audit
+**Status:** MILESTONE 2 COMPLETE / AWAITING APPROVAL GATE FOR MILESTONE 3
+**Audit Report:** [docs/reports/AGROAI_AI_MODELS_AND_FIELDWISE_INSIGHTS_AUDIT.md](docs/reports/AGROAI_AI_MODELS_AND_FIELDWISE_INSIGHTS_AUDIT.md)
+**Milestone 2 Report:** [docs/reports/AGROAI_FIELDWISE_AI_INSIGHTS_IMPLEMENTATION_REPORT.md](docs/reports/AGROAI_FIELDWISE_AI_INSIGHTS_IMPLEMENTATION_REPORT.md)
+**Date:** 2026-11-22
+
+- [x] **Milestone 1 — Investigation & Audit:**
+  - [x] Task 1.1: Inspect Farm AI Insights components, diagnostics center, backend APIs, and field ownership models. Diagnose single-field display behavior.
+  - [x] Task 1.2: Formally define expected dynamic multi-field behavior ($N$ fields = $N$ rows, 0 fields = empty state, strict field ID scoping, zero cross-field leakage).
+  - [x] Task 1.3: Audit exact dataset `ai-service\data\agroai_labeled_dataset_v2 (1).csv` (SHA-256 `87b93178`, 2,200 rows, 13 cols, target distributions, class imbalance).
+  - [x] Task 1.4: Complete audit of existing AI models (Water Need, Field Status, Crop Recommendation, Leaf Disease Detection). Validate artifacts, pipelines, encoders, and held-out test evaluations.
+  - [x] Task 1.5: Produce audit report `docs/reports/AGROAI_AI_MODELS_AND_FIELDWISE_INSIGHTS_AUDIT.md`.
+  - [x] **Approval Gate: Review Milestone 1 Audit & Plan before proceeding to implementation.** (Approved by User)
+
+- [x] **Milestone 2 — Field-Wise AI Insights Implementation:**
+  - [x] Task 2.1: Implement dynamic field retrieval and display for selected farm ($N$ fields = $N$ rows; 0 fields = clean empty state).
+  - [x] Task 2.2: Ensure independent latest AI evaluation retrieval per field with strict canonical field ID isolation (`farmAiInsights.ts`).
+  - [x] Task 2.3: Display water requirements, field status, recommended crops, and disease status with distinct empty/pending/failed handling (never fabricating diagnoses; preserving `MODEL_UNAVAILABLE`).
+  - [x] Task 2.4: Refactor right-rail telemetry widget in `DashboardPage.tsx` eliminating `fieldsList[0]` dependency, adding Farm-Wide Aggregation and interactive Sector Telemetry View switcher.
+  - [x] Task 2.5: Multi-field test suite covering 0, 1, 2, and multiple fields, plus cross-field isolation rejection (`farmAiInsights.test.ts`: 8/8 PASS; Vitest total: 88/88 PASS).
+  - [x] **Approval Gate: Review Milestone 2 Implementation before proceeding to Milestone 3.** (Approved by User)
+
+- [x] **Milestone 3 — AI Model Training Remediation:**
+  - [x] Task 3.1 (Stage A): Dataset & model training investigation. Verify SHA-256 fingerprint, inspect 9 Urgent samples, audit leakage and stratified split.
+  - [x] Task 3.2 (Stage A): Evaluate candidate remediation strategies without touching production artifacts (Baseline, class_weight='balanced', sample_weight, oversampling, logistic regression; 25-fold RepeatedStratifiedKFold cross-validation). Produce [AGROAI_WATER_NEED_IMBALANCE_INVESTIGATION_REPORT.md](docs/reports/AGROAI_WATER_NEED_IMBALANCE_INVESTIGATION_REPORT.md).
+  - [x] **Approval Gate: Review Stage A Investigation & Strategy Comparison.** (Accepted by User - Candidate 2 selected for testing)
+  - [x] Task 3.3 (Stage B): Train Candidate 2 (`HistGradientBoostingClassifier(class_weight='balanced', max_iter=150, random_state=42)`) with StandardScaler pipeline. Stage candidate artifact strictly in isolated directory (`ai-service/models/candidates/water_need_model_candidate_balanced.joblib`). Baseline production model remains untouched.
+  - [x] Task 3.4 (Stage B): Fresh-process validation of candidate artifact (schema, parameters, 4-class representative inferences, invalid input rejection, production inference isolation). All 24 pytest tests pass. Produce [AGROAI_WATER_NEED_CANDIDATE2_VALIDATION_REPORT.md](docs/reports/AGROAI_WATER_NEED_CANDIDATE2_VALIDATION_REPORT.md).
+  - [x] **Authoritative Production Decision: ORIGINAL BASELINE WATER NEED MODEL RETAINED IN PRODUCTION. Candidate 2 VALIDATED, NOT PROMOTED.**
+  - [x] Task 3.5: Final regression testing, artifact SHA-256 post-test integrity verification, and cross-service audit (Backend: 284/284, Frontend: 88/88 + build pass, AI: 24/24). Produce [AGROAI_MILESTONE_3_FINAL_VERIFICATION_REPORT.md](docs/reports/AGROAI_MILESTONE_3_FINAL_VERIFICATION_REPORT.md).
+
+- [x] **Milestone 4 — Owner Dashboard Field-wise AI Decision Integration & Full-Stack Verification:**
+  - [x] Task 4.1: Root cause audit of Owner Dashboard `No evaluation yet` issue (field ID sanitization mismatch, N+1 per-field silent catch, lack of farm batch endpoint).
+  - [x] Task 4.2: Implement high-efficiency farm-level batch endpoints `GET /api/v1/farms/{farmId}/monitoring/agricultural-analyses/latest` and `GET /api/v1/farms/{farmId}/monitoring/telemetry/latest` with strict member authorization.
+  - [x] Task 4.3: Implement canonical composite ID and local field ID normalization in frontend `farmAiInsights.ts`, preserving strict cross-field isolation.
+  - [x] Task 4.4: Expand analysis lifecycle state handling (`PENDING` "Analysis queued", `PROCESSING` "Analyzing...", `COMPLETED`, `FAILED` "Analysis failed", `INSUFFICIENT_DATA` "Insufficient data", `UNEVALUATED` "No evaluation yet").
+  - [x] Task 4.5: Implement non-terminal auto-polling in `DashboardPage.tsx` with proper cleanup on terminal status or unmount.
+  - [x] Task 4.6: Integrate agricultural AI decisions and historical summaries into `FieldMonitoringPanel.tsx` ("View Decision" target).
+  - [x] Task 4.7: Execute full-stack verification (Backend: 289/289 pass, Frontend: 91/91 pass, TypeScript + Vite clean build, Python AI: 24/24 pass).
+  - [x] Task 4.8: Author [docs/reports/OWNER_DASHBOARD_AI_DECISION_INTEGRATION_REPORT.md](docs/reports/OWNER_DASHBOARD_AI_DECISION_INTEGRATION_REPORT.md) with verdict `PASS — OWNER DASHBOARD AI DECISIONS FULLY VERIFIED`.
+  - [x] Task 4.9: Owner Dashboard AI Decision Live Browser Verification on live Cloud Firestore (`agroai-dev`). Verified complete end-to-end workflow: Farmer submits 8 agronomic telemetry readings -> Async AI analysis runs -> Persists in Firestore -> Farmer UI renders analysis card -> Owner Dashboard renders identical analysisId, predictions, and status -> Hard page reloads preserve state without regressions. See [docs/reports/OWNER_DASHBOARD_AI_DECISION_LIVE_VERIFICATION_REPORT.md](docs/reports/OWNER_DASHBOARD_AI_DECISION_LIVE_VERIFICATION_REPORT.md).
+
 ## Work policy
 Do not mark an item `VERIFIED` without test evidence. Do not begin a later milestone without approval.
 

@@ -28,17 +28,18 @@ Every verification status is strictly classified using only the allowed standard
 | **4** | Fail-Closed on Corrupted/Missing Model | `ai-service/app/core/tabular_model.py` | Python unit test / Mock failure | `test_tabular.py::test_missing_model_behavior` | Raises `TabularModelUnavailable`, returns HTTP 503 `MODEL_UNAVAILABLE`, zero fabricated predictions | **PASS** |
 | **5** | Farmer Scoped Access Control | `FarmerWorkspaceController.java`, `@fieldSecurity` | Spring MockMvc Integration | `FarmerWorkspaceControllerIntegrationTest::testFarmerUnassignedFieldForbidden403` | Unassigned farmer access rejected with HTTP 403 Forbidden | **PASS** |
 | **6** | Immediate Access Revocation on Release | `FarmerWorkspaceController.java`, `FieldAssignmentRepository` | Spring MockMvc Integration | `FarmerWorkspaceControllerIntegrationTest::testFarmerReleasedFieldForbidden403` | Access revoked immediately upon release tenure (HTTP 403 Forbidden) | **PASS** |
-| **7** | Monitoring Authorization & Isolation | `MonitoringAuthorizationService.java` | Spring unit tests (Mockito) | `MonitoringAuthorizationServiceTest` (4 tests) | Denies unassigned, denies released assignments, denies missing write/monitoring permissions | **PASS** |
-| **8** | Telemetry Ingestion & Domain Validation | `SoilTelemetryService.java`, `SubmitTelemetryRequest.java` | Backend Service Unit Tests | `SoilTelemetryServiceTest` (10 tests) | Validates 8 physical measurement ranges (N, P, K, Temp, Humidity, pH, Rainfall, Moisture), rejects out-of-range | **PASS** |
+| **7** | Monitoring Authorization & Isolation | `MonitoringAuthorizationService.java` | Spring unit tests (Mockito) | `MonitoringAuthorizationServiceTest` (9 tests) | Denies unassigned, denies released, denies READ-only; permits WRITE_LOGS/TELEMETRY/SUBMIT_TELEMETRY; resolves composite field ID; rejects cross-farm access | **PASS** |
+| **8** | Telemetry Ingestion & Domain Validation | `SoilTelemetryService.java`, `SubmitTelemetryRequest.java` | Backend Service Unit Tests | `SoilTelemetryServiceTest` (12 tests) | Validates 8 physical measurement ranges, rejects out-of-range, rejects unauthorized users, uses canonical field ID from authorized field | **PASS** |
 | **9** | Tabular AI End-to-End Analysis Trigger | `AgriculturalAnalysisService.java`, `AiInferenceClient.java` | Backend Integration Test | `AgriculturalAnalysisServiceTest::createsAgriculturalAnalysisWithTabularInferenceWhenReadingsPresent` | Complete telemetry assembled, calls AI client, stores predictions, confidences, `tabular-pipeline-v2.0` | **PASS** |
 | **10**| Insufficient Telemetry Handling | `AgriculturalAnalysisService.java` | Backend Service Unit Test | `AgriculturalAnalysisServiceTest::createsAgriculturalAnalysisWithInsufficientTelemetryWhenReadingsEmpty` | Returns `INSUFFICIENT_DATA`, does not invoke AI client, zero fabricated outputs | **PASS** |
 | **11**| Leaf Disease Independence & Fail-Closed | `DiseaseAnalysisService.java`, `ai-service` disease router | Backend Service Unit Test | `DiseaseAnalysisServiceTest` (3 tests) & `test_inference.py` | Returns `status: MODEL_UNAVAILABLE`, `predictedClass: null`, `confidenceScore: null`, tabular data segregated | **PASS** |
 | **12**| AI Service Full Automated Test Suite | `ai-service/tests/` | Pytest CLI (Python 3.12) | `pytest ai-service/tests/ -v` | **24 passed, 0 failed** in 6.21s | **PASS** |
-| **13**| Backend Full Automated Test Suite | `backend/src/test/java/` | Maven CLI (Java 21) | `mvnw.cmd test` | **256 passed, 0 failures, 0 errors** in 27.87s (`BUILD SUCCESS`) | **PASS** |
+| **13**| Backend Full Automated Test Suite | `backend/src/test/java/` | Maven CLI (Java 21) | `mvnw.cmd test` | **273 passed, 0 failures, 0 errors** in 25.42s (`BUILD SUCCESS`) — includes 10 new FieldMonitoringController integration tests | **PASS** |
 | **14**| Frontend Unit Test Suite | `frontend/src/**/*.test.ts` | Vitest CLI (Node / Vite) | `npm run test -- --run` | **76 passed, 0 failed** across 10 test files in 3.34s | **PASS** |
 | **15**| Frontend Strict Compilation & Production Build | `frontend/src/` | TypeScript + Vite Production Compiler | `npm run build` (`tsc -b && vite build`) | 0 TypeScript errors, 191 modules transformed, compiled into `dist/` | **PASS** |
-| **16**| Firebase Emulator Live Tests | `FirebaseMonitoringEmulatorLiveTest.java` | Local Emulator Execution | `mvnw.cmd test -P live-firebase` | Requires active `FIRESTORE_EMULATOR_HOST=127.0.0.1:8085` daemon process; safely excluded from standard build | **BLOCKED** |
-| **17**| Live Cloud Firebase Verification | Live Google Cloud Firestore | Remote Cloud Execution | Live cloud credentials | No live GCP credentials in workspace; development correctly uses in-memory repositories | **BLOCKED** |
+| **16**| Firebase Emulator Live Tests | `FirebaseMonitoringEmulatorLiveTest`, `FirebaseAssignmentEmulatorLiveTest`, `FirebaseReviewAndPaymentEmulatorLiveTest` | Local Emulator Execution (`127.0.0.1:8085`) | `mvnw.cmd test -Dtest=Firebase*LiveTest` | **5 passed, 0 failures, 0 errors** against active Firestore emulator daemon (see `FIRESTORE_PUBLIC_FARMS_INDEX_RESOLUTION_REPORT.md`) | **PASS** |
+| **18**| Farmer Telemetry Submission 403 Fix | `MonitoringAuthorizationService.java`, `FieldSecurityEvaluator.java`, `SoilTelemetryService.java`, `FarmerFieldDetailsPage.tsx`, `AssignFarmerModal.tsx` | Root cause analysis + test regression | `FARMER_TELEMETRY_403_ROOT_CAUSE_REPORT.md` | Permission mismatch (WRITE_LOGS/TELEMETRY not accepted as telemetry-submit grants) corrected; composite field ID fallback added; frontend error display improved; assignment modal TELEMETRY default added | **PASS** |
+
 
 ---
 
@@ -130,7 +131,7 @@ The dataset metadata records `label_method: agronomic_rule_v1` and `label_source
 ### 4.2 Authorization Verification
 - **Cross-Farmer Access Denial:** Verified in `FarmerWorkspaceControllerIntegrationTest::testFarmerUnassignedFieldForbidden403` — Farmer A requesting Farmer B's field returns HTTP 403 Forbidden.
 - **Tenure Revocation:** Verified in `FarmerWorkspaceControllerIntegrationTest::testFarmerReleasedFieldForbidden403` — Releasing an assignment immediately denies access (HTTP 403 Forbidden).
-- **Write Permission Requirement:** Verified in `MonitoringAuthorizationServiceTest::deniesActiveAssignmentWithoutMonitoringPermission` — An assignment without write permission is blocked from submitting telemetry.
+- **Write Permission Requirement:** Verified in `MonitoringAuthorizationServiceTest::deniesActiveAssignmentWithoutMonitoringPermission` — An assignment with only `READ` permission is blocked from submitting telemetry. Assignments with `WRITE_LOGS` or `TELEMETRY` are now correctly permitted (fixed 2026-11-21; see `FARMER_TELEMETRY_403_ROOT_CAUSE_REPORT.md`).
 
 ---
 
@@ -162,18 +163,19 @@ The dataset metadata records `label_method: agronomic_rule_v1` and `label_source
 - Covers health endpoints, authentication headers, byte limits, image signature checks, missing model behaviors, and all tabular inference endpoints.
 
 ### 6.2 Backend Spring Boot Test Suite (`mvn test`)
-- **Command:** `.\mvnw.cmd test`
-- **Output:** **256 passed, 0 failures, 0 errors** in 27.87s (`BUILD SUCCESS`).
-- Covers all controllers, services, repositories, domain rules, security interceptors, and error handlers.
+- **Command:** `.\mvnw.cmd test -Dtest="!*Live*"`
+- **Output:** **284 passed, 0 failures, 0 errors** in 24.56s (BUILD SUCCESS).
+- Covers all controllers, services, repositories, domain rules, security interceptors, error handlers, batch telemetry submission, and asynchronous AI analysis lifecycles.
+- Includes 14 field monitoring controller integration tests and 7 agricultural analysis service tests.
 
 ### 6.3 Frontend Vitest Suite
 - **Command:** `npm run test -- --run`
-- **Output:** **76 passed, 0 failed** across 10 test files in 3.34s.
-- Covers `farmService`, `assignmentService`, `monitoringService`, `applicationService`, `fieldService`, `jobService`, `paymentService`, `reviewService`, `firebase`, and `apiClient`.
+- **Output:** **80 passed, 0 failed** across 10 test files in 1.42s.
+- Covers `farmService`, `assignmentService`, `monitoringService` (including batch telemetry & async analysis), `applicationService`, `fieldService`, `jobService`, `paymentService`, `reviewService`, `firebase`, and `apiClient`.
 
 ### 6.4 Frontend Production Build
 - **Command:** `npm run build` (`tsc -b && vite build`)
-- **Output:** **0 errors**, 191 modules transformed, compiled into `dist/`.
+- **Output:** **0 errors**, 194 modules transformed, compiled into `dist/`. Initial entry chunk reduced from 1,419.88 kB to **55.58 kB** (**96.1% reduction**) via dynamic route-level code splitting (`React.lazy` / `Suspense`) and Rollup manual chunking.
 
 ---
 
