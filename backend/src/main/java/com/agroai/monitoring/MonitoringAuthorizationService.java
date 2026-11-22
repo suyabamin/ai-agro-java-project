@@ -20,6 +20,7 @@ import com.agroai.repository.FieldRepository;
 import com.agroai.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 
 @Service
@@ -42,10 +43,10 @@ public class MonitoringAuthorizationService {
     public Field requireReadAccess(String farmId, String fieldId, String uid) {
         Field field = requireMatchingField(farmId, fieldId);
         requireActiveAccount(uid);
-        if (!isOperational(farmId, field)) throw new UnauthorizedResourceAccessException("field", fieldId, "Monitoring access requires an ACTIVE farm and field");
+        if (!isOperational(farmId, field)) throw new UnauthorizedResourceAccessException("field", field.getFieldId(), "Monitoring access requires an ACTIVE farm and field");
         Optional<FarmMembership> membership = memberships.findMembership(farmId, uid);
         if (membership.isPresent() && membership.get().getStatus() == MembershipStatus.ACTIVE) return field;
-        FieldAssignment assignment = activeAssignment(fieldId, farmId, uid);
+        FieldAssignment assignment = activeAssignment(field.getFieldId(), farmId, uid);
         if (assignment != null && isOperational(farmId, field)) return field;
         throw denied(farmId, "Active farm membership or field assignment is required");
     }
@@ -55,15 +56,31 @@ public class MonitoringAuthorizationService {
         requireActiveAccount(uid);
         Farm farm = farms.findById(farmId).orElseThrow(() -> new FarmNotFoundException(farmId));
         if (farm.getStatus() != FarmStatus.ACTIVE || field.getStatus() != FieldStatus.ACTIVE) {
-            throw new UnauthorizedResourceAccessException("field", fieldId, "Monitoring writes require an ACTIVE farm and field");
+            throw new UnauthorizedResourceAccessException("field", field.getFieldId(), "Monitoring writes require an ACTIVE farm and field");
         }
         Optional<FarmMembership> membership = memberships.findMembership(farmId, uid);
         if (membership.isPresent() && membership.get().getStatus() == MembershipStatus.ACTIVE &&
                 (membership.get().getRole() == FarmRole.OWNER || membership.get().getRole() == FarmRole.MANAGER)) return field;
-        FieldAssignment assignment = activeAssignment(fieldId, farmId, uid);
-        if (assignment != null && (assignment.getPermissions().isEmpty() ||
-                assignment.getPermissions().contains("SUBMIT_TELEMETRY"))) return field;
+        FieldAssignment assignment = activeAssignment(field.getFieldId(), farmId, uid);
+        if (assignment != null && hasMonitoringWritePermission(assignment)) return field;
         throw denied(farmId, "OWNER, MANAGER, or an assigned farmer with monitoring permission is required");
+    }
+
+    public Farm requireFarmReadAccess(String farmId, String uid) {
+        requireActiveAccount(uid);
+        Farm farm = farms.findById(farmId).orElseThrow(() -> new FarmNotFoundException(farmId));
+        if (farm.getStatus() != FarmStatus.ACTIVE) {
+            throw new UnauthorizedResourceAccessException("farm", farmId, "Monitoring access requires an ACTIVE farm");
+        }
+        Optional<FarmMembership> membership = memberships.findMembership(farmId, uid);
+        if (membership.isPresent() && membership.get().getStatus() == MembershipStatus.ACTIVE) {
+            return farm;
+        }
+        List<FieldAssignment> userAssignments = assignments.findActiveAssignmentsByFarmer(uid);
+        if (userAssignments != null && userAssignments.stream().anyMatch(a -> farmId.equals(a.getFarmId()))) {
+            return farm;
+        }
+        throw denied(farmId, "Active farm membership or assignment is required");
     }
 
     public void requireManager(String farmId, String uid) {
@@ -79,9 +96,28 @@ public class MonitoringAuthorizationService {
 
     private Field requireMatchingField(String farmId, String fieldId) {
         Farm farm = farms.findById(farmId).orElseThrow(() -> new FarmNotFoundException(farmId));
-        Field field = fields.findById(fieldId).orElseThrow(() -> new FieldNotFoundException(fieldId));
-        if (!farmId.equals(field.getFarmId())) throw new FieldNotFoundException(fieldId);
+        Field field = fields.findById(fieldId).orElse(null);
+        if (field == null && fieldId != null && !fieldId.trim().isEmpty()) {
+            try {
+                String composite = com.agroai.util.KeyEncoder.fieldDocId(farmId, fieldId);
+                field = fields.findById(composite).orElse(null);
+            } catch (Exception ignored) {
+            }
+        }
+        if (field == null || !farmId.equals(field.getFarmId())) {
+            throw new FieldNotFoundException(fieldId != null ? fieldId : "unknown");
+        }
         return field;
+    }
+
+    private boolean hasMonitoringWritePermission(FieldAssignment assignment) {
+        List<String> perms = assignment.getPermissions();
+        if (perms == null || perms.isEmpty()) {
+            return true;
+        }
+        return perms.contains("SUBMIT_TELEMETRY") ||
+                perms.contains("TELEMETRY") ||
+                perms.contains("WRITE_LOGS");
     }
 
     private FieldAssignment activeAssignment(String fieldId, String farmId, String uid) {

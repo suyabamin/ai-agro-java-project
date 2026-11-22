@@ -39,6 +39,59 @@ class MonitoringAuthorizationServiceTest {
     }
 
     @Test
+    void permitsWriteForActiveAssignmentWithWriteLogsPermission() {
+        Fixture f = new Fixture();
+        when(f.memberships.findMembership("farm-1", "user-1")).thenReturn(Optional.empty());
+        FieldAssignment assignment = new FieldAssignment("assignment-1", "farm-1", "field-1", "user-1", AssignmentStatus.ACTIVE);
+        assignment.setPermissions(java.util.List.of("READ", "WRITE_LOGS"));
+        when(f.assignments.findAssignment("field-1", "user-1")).thenReturn(Optional.of(assignment));
+        assertSame(f.field, f.service.requireWriteAccess("farm-1", "field-1", "user-1"));
+    }
+
+    @Test
+    void permitsWriteForActiveAssignmentWithTelemetryPermission() {
+        Fixture f = new Fixture();
+        when(f.memberships.findMembership("farm-1", "user-1")).thenReturn(Optional.empty());
+        FieldAssignment assignment = new FieldAssignment("assignment-1", "farm-1", "field-1", "user-1", AssignmentStatus.ACTIVE);
+        assignment.setPermissions(java.util.List.of("READ", "WRITE_LOGS", "TELEMETRY"));
+        when(f.assignments.findAssignment("field-1", "user-1")).thenReturn(Optional.of(assignment));
+        assertSame(f.field, f.service.requireWriteAccess("farm-1", "field-1", "user-1"));
+    }
+
+    @Test
+    void permitsWriteForActiveAssignmentWithSubmitTelemetryPermission() {
+        Fixture f = new Fixture();
+        when(f.memberships.findMembership("farm-1", "user-1")).thenReturn(Optional.empty());
+        FieldAssignment assignment = new FieldAssignment("assignment-1", "farm-1", "field-1", "user-1", AssignmentStatus.ACTIVE);
+        assignment.setPermissions(java.util.List.of("SUBMIT_TELEMETRY"));
+        when(f.assignments.findAssignment("field-1", "user-1")).thenReturn(Optional.of(assignment));
+        assertSame(f.field, f.service.requireWriteAccess("farm-1", "field-1", "user-1"));
+    }
+
+    @Test
+    void permitsWriteWhenCompositeFieldIdIsResolvedFromLocalFieldId() {
+        Fixture f = new Fixture();
+        when(f.memberships.findMembership("farm-1", "user-1")).thenReturn(Optional.empty());
+        // Direct lookup for local-1 fails, but composite lookup farm-1--local-1 succeeds
+        when(f.fields.findById("local-1")).thenReturn(Optional.empty());
+        when(f.fields.findById("farm-1--local-1")).thenReturn(Optional.of(f.field));
+        FieldAssignment assignment = new FieldAssignment("assignment-1", "farm-1", "field-1", "user-1", AssignmentStatus.ACTIVE);
+        assignment.setPermissions(java.util.List.of("WRITE_LOGS"));
+        when(f.assignments.findAssignment("field-1", "user-1")).thenReturn(Optional.of(assignment));
+
+        Field resolved = f.service.requireWriteAccess("farm-1", "local-1", "user-1");
+        assertSame(f.field, resolved);
+    }
+
+    @Test
+    void deniesWriteWhenFieldBelongsToDifferentFarm() {
+        Fixture f = new Fixture();
+        Field foreignField = new Field("field-2", "local-2", "foreign-farm", "Foreign Field", 2.0);
+        when(f.fields.findById("field-2")).thenReturn(Optional.of(foreignField));
+        assertThrows(com.agroai.exception.FieldNotFoundException.class, () -> f.service.requireWriteAccess("farm-1", "field-2", "user-1"));
+    }
+
+    @Test
     void deniesMonitoringReadsWhenFarmIsSuspended() {
         Fixture f = new Fixture();
         f.farm.setStatus(FarmStatus.SUSPENDED);

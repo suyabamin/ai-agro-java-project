@@ -55,8 +55,13 @@ public class FieldSecurityEvaluator {
             return false;
         }
         // OBSERVER cannot submit telemetry
-        return assignment.get().getPermissions().contains("SUBMIT_TELEMETRY") ||
-                assignment.get().getPermissions().isEmpty(); // Default active assigned farmer permission
+        java.util.List<String> perms = assignment.get().getPermissions();
+        if (perms == null || perms.isEmpty()) {
+            return true;
+        }
+        return perms.contains("SUBMIT_TELEMETRY") ||
+                perms.contains("TELEMETRY") ||
+                perms.contains("WRITE_LOGS");
     }
 
     private boolean hasOperationalLifecycle(FieldAssignment assignment) {
