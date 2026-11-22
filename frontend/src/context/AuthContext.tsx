@@ -114,6 +114,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      if (import.meta.env.DEV && localStorage.getItem('agroai_mock_user')) {
+        console.warn('Ignoring unauthorized event in mock development mode');
+        return;
+      }
       logout();
     };
     window.addEventListener('agroai:unauthorized', handleUnauthorized);
@@ -172,6 +176,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     localStorage.setItem('agroai_mock_user', JSON.stringify(mockUser));
     localStorage.setItem('agroai_mock_token', `mock.jwt.token.${role}`);
+    setPerspective(role);
     setUser(mockUser);
     setProfileUninitialized(false);
   };

@@ -5,7 +5,7 @@ import { isFirebaseClientConfigured, auth } from '../services/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
 export const LoginPage: React.FC = () => {
-  const { mockLogin, isAuthenticated } = useAuth();
+  const { mockLogin, isAuthenticated, user, perspective } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,9 +21,12 @@ export const LoginPage: React.FC = () => {
 
   React.useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      const isFarmer = user?.role === 'farmer' || user?.activeRoles?.includes('FARMER') || perspective === 'farmer';
+      const defaultTarget = isFarmer ? '/farmer/dashboard' : '/dashboard';
+      const target = from !== '/dashboard' ? from : defaultTarget;
+      navigate(target, { replace: true });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user, perspective, from, navigate]);
 
   const handleFirebaseLogin = async (e: React.FormEvent) => {
     e.preventDefault();
