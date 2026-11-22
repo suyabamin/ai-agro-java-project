@@ -2,6 +2,7 @@ package com.agroai.repository;
 
 import com.agroai.config.FirebaseConfig;
 import com.agroai.exception.DatabaseUnavailableException;
+import com.agroai.util.CursorPagination;
 import com.google.cloud.firestore.DocumentSnapshot;
 import com.google.cloud.firestore.FieldPath;
 import com.google.cloud.firestore.Firestore;
@@ -11,8 +12,11 @@ import com.google.cloud.firestore.Query.Direction;
 import com.google.cloud.firestore.QuerySnapshot;
 import com.google.cloud.firestore.WriteBatch;
 import com.google.firebase.cloud.FirestoreClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Repository;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -24,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /** Firestore adapter with bounded cursor reads and an in-memory dev/test implementation. */
 @Repository
 public class FirestoreFieldMonitoringRepository implements FieldMonitoringRepository {
+    private static final Logger log = LoggerFactory.getLogger(FirestoreFieldMonitoringRepository.class);
     private static final String ACTIVITY = "field_activity";
     private static final List<String> ALLOWED_COLLECTIONS = List.of("field_images", "soil_telemetry", "ai_analysis_results", "irrigation_plans");
     private final FirebaseConfig firebaseConfig;
@@ -109,15 +114,48 @@ public class FirestoreFieldMonitoringRepository implements FieldMonitoringReposi
             for (Map.Entry<String, Object> filter : filters.entrySet()) query = query.whereEqualTo(filter.getKey(), filter.getValue());
             if (from != null) query = query.whereGreaterThanOrEqualTo("createdAtEpochMs", from);
             if (to != null) query = query.whereLessThanOrEqualTo("createdAtEpochMs", to);
-            query = query.orderBy("createdAtEpochMs", Direction.DESCENDING).orderBy(FieldPath.documentId(), Direction.DESCENDING);
+
+            Query indexedQuery = query.orderBy("createdAtEpochMs", Direction.DESCENDING).orderBy(FieldPath.documentId(), Direction.DESCENDING);
             if (afterId != null) {
                 DocumentSnapshot after = ref.document(afterId).get().get();
                 if (!after.exists() || !farmId.equals(after.getString("farmId")) || !fieldId.equals(after.getString("fieldId"))) {
                     throw new IllegalArgumentException("Cursor is invalid for this field");
                 }
-                query = query.startAfter(after);
+                indexedQuery = indexedQuery.startAfter(after);
             }
-            QuerySnapshot result = query.limit(size + 1).get().get();
+
+            QuerySnapshot result;
+            try {
+                result = indexedQuery.limit(size + 1).get().get();
+            } catch (Exception queryEx) {
+                log.warn("Composite indexed query failed for collection {} (missing index? Falling back to unindexed query with in-memory sort): {}", collection, queryEx.getMessage());
+                Query unindexed = query.limit(CursorPagination.MAX_PAGE_SIZE);
+                QuerySnapshot fallbackSnap = unindexed.get().get();
+                List<QueryDocumentSnapshot> sortedDocs = new ArrayList<>(fallbackSnap.getDocuments());
+                sortedDocs.sort((a, b) -> {
+                    Object rawA = a.get("createdAtEpochMs");
+                    long tA = rawA instanceof Number numA ? numA.longValue() : 0L;
+                    Object rawB = b.get("createdAtEpochMs");
+                    long tB = rawB instanceof Number numB ? numB.longValue() : 0L;
+                    int cmp = Long.compare(tB, tA);
+                    return cmp != 0 ? cmp : b.getId().compareTo(a.getId());
+                });
+                int startIndex = 0;
+                if (afterId != null) {
+                    for (int i = 0; i < sortedDocs.size(); i++) {
+                        if (sortedDocs.get(i).getId().equals(afterId)) {
+                            startIndex = i + 1;
+                            break;
+                        }
+                    }
+                }
+                List<QueryDocumentSnapshot> pageDocs = sortedDocs.subList(Math.min(startIndex, sortedDocs.size()),
+                        Math.min(startIndex + size, sortedDocs.size()));
+                boolean hasNext = (startIndex + size) < sortedDocs.size();
+                List<Map<String, Object>> items = pageDocs.stream().map(doc -> withId(doc.getId(), doc.getData())).toList();
+                return new CursorPage<>(items, hasNext && !pageDocs.isEmpty() ? pageDocs.get(pageDocs.size() - 1).getId() : null, hasNext);
+            }
+
             boolean hasNext = result.size() > size;
             List<QueryDocumentSnapshot> docs = result.getDocuments().stream().limit(size).toList();
             List<Map<String, Object>> items = docs.stream().map(doc -> withId(doc.getId(), doc.getData())).toList();
@@ -125,6 +163,7 @@ public class FirestoreFieldMonitoringRepository implements FieldMonitoringReposi
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
+            log.error("Unable to page monitoring records in collection {}: {}", collection, e.getMessage(), e);
             throw new DatabaseUnavailableException("Unable to page monitoring records", e);
         }
     }
