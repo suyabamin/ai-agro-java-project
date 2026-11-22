@@ -59,6 +59,69 @@ describe('monitoringService', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/telemetry', record);
   });
 
+  it('submits telemetry batch in a single request', async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { success: true, data: [{ telemetryId: 't-1' }, { telemetryId: 't-2' }] } });
+    const readings = [
+      { measurementType: 'NITROGEN', value: 90, unit: 'mg/kg' },
+      { measurementType: 'PHOSPHORUS', value: 45, unit: 'mg/kg' },
+    ];
+    await monitoringService.submitTelemetryBatch('farm-1', 'field-1', readings);
+    expect(apiClient.post).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/telemetry/batch', { readings });
+  });
+
+  it('creates agricultural analysis with optional async mode', async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { success: true, data: { analysisId: 'an-1', status: 'PENDING' } } });
+    await monitoringService.createAnalysis('farm-1', 'field-1', true);
+    expect(apiClient.post).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/agricultural-analyses', null, {
+      params: { async: true },
+    });
+  });
+
+  it('fetches specific agricultural analysis by id', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { success: true, data: { analysisId: 'an-1', status: 'COMPLETED' } } });
+    const response = await monitoringService.agriculturalAnalysis('farm-1', 'field-1', 'an-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/agricultural-analyses/an-1');
+    expect(response.data?.status).toBe('COMPLETED');
+  });
+
+  it('lists agricultural analyses with pagination', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { success: true, data: { items: [], nextCursor: null, hasNext: false, pageSize: 25 } } });
+    await monitoringService.listAgriculturalAnalyses('farm-1', 'field-1', 'cursor-abc', 25);
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/agricultural-analyses', {
+      params: { cursor: 'cursor-abc', size: 25 },
+    });
+  });
+
+  it('fetches latest agricultural analyses for entire farm in one batch request', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          'field-1': { analysisId: 'an-1', status: 'COMPLETED', predictedWaterNeed: 'Low' },
+          'field-2': { analysisId: 'an-2', status: 'PENDING' },
+        },
+      },
+    });
+    const response = await monitoringService.latestFarmAgriculturalAnalyses('farm-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/monitoring/agricultural-analyses/latest');
+    expect(response.data?.['field-1']?.predictedWaterNeed).toBe('Low');
+    expect(response.data?.['field-2']?.status).toBe('PENDING');
+  });
+
+  it('fetches latest telemetry for entire farm in one batch request', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          'field-1': [{ measurementType: 'SOIL_MOISTURE', value: 45.0 }],
+        },
+      },
+    });
+    const response = await monitoringService.latestFarmTelemetry('farm-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/monitoring/telemetry/latest');
+    expect(response.data?.['field-1']).toHaveLength(1);
+  });
+
   it('rejects mismatched or unsupported image declarations before upload', () => {
     expect(validateCropImageFile(new File(['bytes'], 'leaf.gif', { type: 'image/gif' }))).toContain('PNG or JPEG');
     expect(validateCropImageFile(new File(['bytes'], 'leaf.png', { type: 'image/jpeg' }))).toContain('extension matches');

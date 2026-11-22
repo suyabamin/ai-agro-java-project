@@ -13,8 +13,15 @@ export function validateCropImageFile(file: File): string | null {
 }
 
 const root = (farmId: string, fieldId: string) => `/farms/${encodeURIComponent(farmId)}/fields/${encodeURIComponent(fieldId)}/monitoring`;
+const farmRoot = (farmId: string) => `/farms/${encodeURIComponent(farmId)}/monitoring`;
 
 export const monitoringService = {
+  async latestFarmAgriculturalAnalyses(farmId: string) {
+    return (await apiClient.get<ApiResponse<Record<string, MonitoringRecord>>>(`${farmRoot(farmId)}/agricultural-analyses/latest`)).data;
+  },
+  async latestFarmTelemetry(farmId: string) {
+    return (await apiClient.get<ApiResponse<Record<string, MonitoringRecord[]>>>(`${farmRoot(farmId)}/telemetry/latest`)).data;
+  },
   async listImages(farmId: string, fieldId: string, cursor?: string | null, size = 25) {
     return (await apiClient.get<ApiResponse<MonitoringPage<MonitoringRecord>>>(`${root(farmId, fieldId)}/images`, {
       params: { cursor: cursor || undefined, size },
@@ -50,8 +57,21 @@ export const monitoringService = {
   async submitTelemetry(farmId: string, fieldId: string, input: object) {
     return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/telemetry`, input)).data;
   },
-  async createAnalysis(farmId: string, fieldId: string) {
-    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/agricultural-analyses`)).data;
+  async submitTelemetryBatch(farmId: string, fieldId: string, readings: object[]) {
+    return (await apiClient.post<ApiResponse<MonitoringRecord[]>>(`${root(farmId, fieldId)}/telemetry/batch`, { readings })).data;
+  },
+  async createAnalysis(farmId: string, fieldId: string, asyncMode = false) {
+    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/agricultural-analyses`, null, {
+      params: asyncMode ? { async: true } : undefined,
+    })).data;
+  },
+  async agriculturalAnalysis(farmId: string, fieldId: string, analysisId: string) {
+    return (await apiClient.get<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/agricultural-analyses/${encodeURIComponent(analysisId)}`)).data;
+  },
+  async listAgriculturalAnalyses(farmId: string, fieldId: string, cursor?: string | null, size = 25) {
+    return (await apiClient.get<ApiResponse<MonitoringPage<MonitoringRecord>>>(`${root(farmId, fieldId)}/agricultural-analyses`, {
+      params: { cursor: cursor || undefined, size },
+    })).data;
   },
   async analyses(farmId: string, fieldId: string, cursor?: string | null, size = 25) {
     return (await apiClient.get<ApiResponse<MonitoringPage<MonitoringRecord>>>(`${root(farmId, fieldId)}/disease-analyses`, {
