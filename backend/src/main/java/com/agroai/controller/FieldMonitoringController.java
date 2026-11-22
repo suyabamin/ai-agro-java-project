@@ -2,6 +2,7 @@ package com.agroai.controller;
 
 import com.agroai.dto.ApiResponse;
 import com.agroai.dto.CursorPageResponse;
+import com.agroai.dto.SubmitTelemetryBatchRequest;
 import com.agroai.dto.SubmitTelemetryRequest;
 import com.agroai.dto.UpdateIrrigationPlanStatusRequest;
 import com.agroai.monitoring.CropImageService;
@@ -94,6 +95,14 @@ public class FieldMonitoringController {
         return ResponseEntity.status(201).body(ApiResponse.success(telemetry.submit(farmId, fieldId, user.getUid(), request), "Telemetry recorded"));
     }
 
+    @RequiresRevocationCheck
+    @PostMapping("/telemetry/batch")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> submitTelemetryBatch(@PathVariable String farmId,
+            @PathVariable String fieldId, @Valid @RequestBody SubmitTelemetryBatchRequest request,
+            @AuthenticationPrincipal FirebaseUserDetails user) {
+        return ResponseEntity.status(201).body(ApiResponse.success(telemetry.submitBatch(farmId, fieldId, user.getUid(), request.readings()), "Telemetry batch recorded"));
+    }
+
     @GetMapping("/telemetry/latest")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> latestTelemetry(@PathVariable String farmId,
             @PathVariable String fieldId, @AuthenticationPrincipal FirebaseUserDetails user) {
@@ -140,8 +149,23 @@ public class FieldMonitoringController {
     @RequiresRevocationCheck
     @PostMapping("/agricultural-analyses")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createAgriculturalAnalysis(@PathVariable String farmId,
-            @PathVariable String fieldId, @AuthenticationPrincipal FirebaseUserDetails user) {
-        return ResponseEntity.status(201).body(ApiResponse.success(agriculturalAnalysis.create(farmId, fieldId, user.getUid()), "Agricultural evidence summary created"));
+            @PathVariable String fieldId,
+            @RequestParam(defaultValue = "false") boolean async,
+            @AuthenticationPrincipal FirebaseUserDetails user) {
+        return ResponseEntity.status(201).body(ApiResponse.success(agriculturalAnalysis.create(farmId, fieldId, user.getUid(), async), "Agricultural evidence summary created"));
+    }
+
+    @GetMapping("/agricultural-analyses/{analysisId}")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getAgriculturalAnalysis(@PathVariable String farmId,
+            @PathVariable String fieldId, @PathVariable String analysisId, @AuthenticationPrincipal FirebaseUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(agriculturalAnalysis.get(farmId, fieldId, analysisId, user.getUid()), "Agricultural analysis retrieved"));
+    }
+
+    @GetMapping("/agricultural-analyses")
+    public ResponseEntity<ApiResponse<CursorPageResponse<Map<String, Object>>>> listAgriculturalAnalyses(@PathVariable String farmId,
+            @PathVariable String fieldId, @RequestParam(required = false) String cursor, @RequestParam(required = false) Integer size,
+            @AuthenticationPrincipal FirebaseUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(response(agriculturalAnalysis.list(farmId, fieldId, user.getUid(), cursor, size), size), "Agricultural analyses retrieved"));
     }
 
     @RequiresRevocationCheck

@@ -9,6 +9,7 @@ import com.agroai.model.SoilType;
 /** Field information intentionally limited to operational details available to an assigned farmer. */
 public record FarmerFieldResponseDTO(
         String fieldId,
+        String localFieldId,
         String farmId,
         String name,
         CropType cropType,
@@ -18,7 +19,7 @@ public record FarmerFieldResponseDTO(
         FieldStatus status
 ) {
     public static FarmerFieldResponseDTO fromEntity(Field field) {
-        return new FarmerFieldResponseDTO(field.getFieldId(), field.getFarmId(), field.getName(),
+        return new FarmerFieldResponseDTO(field.getFieldId(), field.getLocalFieldId(), field.getFarmId(), field.getName(),
                 field.getCropType(), field.getSoilType(), field.getIrrigationType(),
                 field.getAreaHectares(), field.getStatus());
     }

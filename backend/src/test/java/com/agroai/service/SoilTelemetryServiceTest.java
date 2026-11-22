@@ -47,6 +47,38 @@ class SoilTelemetryServiceTest {
     }
 
     @Test
+    void rejectsSubmissionWhenUserIsNotAuthorized() {
+        SubmitTelemetryRequest request = new SubmitTelemetryRequest(
+                "SOIL_MOISTURE", 35.5, "%", Instant.now().minusSeconds(60), "MANUAL", null, null
+        );
+        doThrow(new com.agroai.exception.UnauthorizedResourceAccessException("User not assigned"))
+                .when(authorization).requireWriteAccess("farm-1", "field-1", "unauthorized-uid");
+
+        assertThrows(com.agroai.exception.UnauthorizedResourceAccessException.class, () ->
+                service.submit("farm-1", "field-1", "unauthorized-uid", request)
+        );
+        verify(repository, never()).createWithActivity(anyString(), anyString(), anyMap(), anyMap());
+    }
+
+    @Test
+    void resolvesCanonicalFieldIdWhenAuthorizedFieldProvided() {
+        SubmitTelemetryRequest request = new SubmitTelemetryRequest(
+                "SOIL_MOISTURE", 35.5, "%", Instant.now().minusSeconds(60), "MANUAL", null, null
+        );
+        com.agroai.model.Field authorizedField = new com.agroai.model.Field(
+                "farm-1--local-1", "local-1", "farm-1", "Field One", 5.0
+        );
+        when(authorization.requireWriteAccess("farm-1", "local-1", "uid-1")).thenReturn(authorizedField);
+        when(repository.find(eq("soil_telemetry"), anyString())).thenReturn(Optional.empty());
+
+        Map<String, Object> result = service.submit("farm-1", "local-1", "uid-1", request);
+
+        assertNotNull(result);
+        assertEquals("farm-1--local-1", result.get("fieldId"));
+        assertEquals("farm-1", result.get("farmId"));
+    }
+
+    @Test
     void readingOutsidePhysicalRangeGeneratesWarningAndInvalidValidationStatus() {
         // Soil moisture % range is 0 to 100. 150.0 is out of physical range.
         SubmitTelemetryRequest request = new SubmitTelemetryRequest(
@@ -189,5 +221,30 @@ class SoilTelemetryServiceTest {
         assertEquals(90.0, result.get("rawValue"));
         assertEquals("mg/kg", result.get("unit"));
         assertEquals("VALID", result.get("validationStatus"));
+    }
+
+    @Test
+    void submitsValidBatchTelemetryReadings() {
+        List<SubmitTelemetryRequest> batch = List.of(
+                new SubmitTelemetryRequest("NITROGEN", 90.0, "mg/kg", Instant.now().minusSeconds(10), "MANUAL", null, "client-n"),
+                new SubmitTelemetryRequest("PHOSPHORUS", 45.0, "mg/kg", Instant.now().minusSeconds(10), "MANUAL", null, "client-p"),
+                new SubmitTelemetryRequest("POTASSIUM", 50.0, "mg/kg", Instant.now().minusSeconds(10), "MANUAL", null, "client-k")
+        );
+        when(repository.find(eq("soil_telemetry"), anyString())).thenReturn(Optional.empty());
+
+        List<Map<String, Object>> results = service.submitBatch("farm-1", "field-1", "uid-1", batch);
+        assertNotNull(results);
+        assertEquals(3, results.size());
+        assertEquals("NITROGEN", results.get(0).get("measurementType"));
+        assertEquals("PHOSPHORUS", results.get(1).get("measurementType"));
+        assertEquals("POTASSIUM", results.get(2).get("measurementType"));
+        verify(authorization, times(1)).requireWriteAccess("farm-1", "field-1", "uid-1");
+        verify(repository, times(3)).createWithActivity(eq("soil_telemetry"), anyString(), anyMap(), anyMap());
+    }
+
+    @Test
+    void rejectsBatchWhenEmptyOrExceedsLimit() {
+        assertThrows(IllegalArgumentException.class, () -> service.submitBatch("farm-1", "field-1", "uid-1", List.of()));
+        assertThrows(IllegalArgumentException.class, () -> service.submitBatch("farm-1", "field-1", "uid-1", null));
     }
 }
