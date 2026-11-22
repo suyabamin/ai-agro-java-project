@@ -1,10 +1,34 @@
-import React, { useEffect, useState, useCallback, useId } from 'react';
+import React, { useEffect, useState, useCallback, useId, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import axios from 'axios';
 import { assignmentService } from '../services/assignmentService';
 import { monitoringService, validateCropImageFile, type MonitoringRecord } from '../services/monitoringService';
 import type { Field } from '../types/field';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
+
+function parseApiErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const status = err.response?.status;
+    const msg = err.response?.data?.message;
+    if (status === 401) {
+      return 'Your session has expired. Please sign in again.';
+    }
+    if (status === 403) {
+      if (typeof msg === 'string' && msg.trim()) {
+        return msg;
+      }
+      return 'You do not have permission to submit data to this field.';
+    }
+    if (typeof msg === 'string' && msg.trim()) {
+      return msg;
+    }
+  }
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  return fallback;
+}
 
 interface FormMeasurements {
   n: string;
@@ -61,8 +85,21 @@ export const FarmerFieldDetailsPage: React.FC = () => {
 
   // AI Analysis State
   const [runningAnalysis, setRunningAnalysis] = useState(false);
+  const [analyzingField, setAnalyzingField] = useState(false);
   const [latestAnalysis, setLatestAnalysis] = useState<MonitoringRecord | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  const pollTimerRef = useRef<number | null>(null);
+
+  // Clear polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) {
+        window.clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // History State
   const [recentTelemetry, setRecentTelemetry] = useState<MonitoringRecord[]>([]);
@@ -89,7 +126,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
         // Fetch telemetry & analyses history concurrently
         const [telRes, analRes] = await Promise.allSettled([
           monitoringService.telemetry(farmId, fieldId),
-          monitoringService.analyses(farmId, fieldId, null, 10),
+          monitoringService.listAgriculturalAnalyses(farmId, fieldId, null, 10),
         ]);
 
         if (telRes.status === 'fulfilled' && telRes.value?.data) {
@@ -168,44 +205,94 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       { measurementType: 'SOIL_MOISTURE', value: parseFloat(formData.soilMoisture), unit: '%' },
     ];
 
+    const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
+    const targetFieldId = field.fieldId || fieldId || '';
+
     try {
-      for (const item of itemsToSubmit) {
-        await monitoringService.submitTelemetry(field.farmId, field.fieldId, {
+      // 1. Submit telemetry batch in a single fast atomic request (<150ms)
+      try {
+        await monitoringService.submitTelemetryBatch(targetFarmId, targetFieldId, itemsToSubmit.map(item => ({
           measurementType: item.measurementType,
           value: item.value,
           unit: item.unit,
           observedAt: now,
           source: 'MANUAL',
           clientEventId: `${clientBatch}_${item.measurementType}`,
-        });
+        })));
+      } catch (batchErr) {
+        // Fallback: submit concurrently if batch endpoint unavailable
+        await Promise.all(itemsToSubmit.map(item =>
+          monitoringService.submitTelemetry(targetFarmId, targetFieldId, {
+            measurementType: item.measurementType,
+            value: item.value,
+            unit: item.unit,
+            observedAt: now,
+            source: 'MANUAL',
+            clientEventId: `${clientBatch}_${item.measurementType}`,
+          })
+        ));
       }
 
-      // Automatically trigger AI analysis lifecycle with the freshly recorded measurements
+      // Refresh telemetry in background non-blockingly
+      monitoringService.telemetry(targetFarmId, targetFieldId).then(telRes => {
+        if (telRes?.data) setRecentTelemetry(telRes.data);
+      }).catch(() => {});
+
+      // 2. Trigger asynchronous AI field analysis lifecycle
+      setAnalyzingField(true);
+      setDataSuccessMsg('All 8 measurements submitted successfully. Running AI agronomic analysis in background...');
+
       try {
-        const analysisRes = await monitoringService.createAnalysis(field.farmId, field.fieldId);
-        if (analysisRes?.data) {
-          setLatestAnalysis(analysisRes.data);
+        const analysisRes = await monitoringService.createAnalysis(targetFarmId, targetFieldId, true);
+        const initialRecord = analysisRes?.data;
+        if (initialRecord) {
+          setLatestAnalysis(initialRecord);
+          const analysisId = initialRecord.analysisId || initialRecord.id;
+
+          if (initialRecord.status === 'COMPLETED' || initialRecord.status === 'INSUFFICIENT_DATA') {
+            setAnalyzingField(false);
+            setDataSuccessMsg('All 8 measurements submitted and field AI analysis completed successfully.');
+          } else if (analysisId) {
+            let attempts = 0;
+            const maxAttempts = 20; // 30s max
+            if (pollTimerRef.current) window.clearInterval(pollTimerRef.current);
+
+            pollTimerRef.current = window.setInterval(async () => {
+              attempts++;
+              try {
+                const pollRes = await monitoringService.agriculturalAnalysis(targetFarmId, targetFieldId, String(analysisId));
+                if (pollRes?.data) {
+                  const updated = pollRes.data;
+                  setLatestAnalysis(updated);
+                  if (updated.status === 'COMPLETED' || updated.status === 'FAILED' || updated.status === 'INSUFFICIENT_DATA' || attempts >= maxAttempts) {
+                    if (pollTimerRef.current) {
+                      window.clearInterval(pollTimerRef.current);
+                      pollTimerRef.current = null;
+                    }
+                    setAnalyzingField(false);
+                    if (updated.status === 'COMPLETED') {
+                      setDataSuccessMsg('AI field analysis complete: Water Need and Field Status evaluated.');
+                    } else if (updated.status === 'FAILED') {
+                      setDataSuccessMsg('Measurements recorded. AI model evaluation encountered a transient issue.');
+                    }
+                  }
+                }
+              } catch {
+                if (attempts >= maxAttempts && pollTimerRef.current) {
+                  window.clearInterval(pollTimerRef.current);
+                  pollTimerRef.current = null;
+                  setAnalyzingField(false);
+                }
+              }
+            }, 1500);
+          }
         }
       } catch {
-        // Telemetry succeeded even if background AI inference has a transient failure
+        setAnalyzingField(false);
+        setDataSuccessMsg('All 8 measurements recorded successfully.');
       }
-
-      // Refresh latest telemetry and analyses
-      const [telRes, analRes] = await Promise.allSettled([
-        monitoringService.telemetry(field.farmId, field.fieldId),
-        monitoringService.analyses(field.farmId, field.fieldId, null, 10),
-      ]);
-      if (telRes.status === 'fulfilled' && telRes.value?.data) setRecentTelemetry(telRes.value.data);
-      if (analRes.status === 'fulfilled' && analRes.value?.data?.items) {
-        setRecentAnalyses(analRes.value.data.items);
-        if (analRes.value.data.items.length > 0 && !latestAnalysis) {
-          setLatestAnalysis(analRes.value.data.items[0]);
-        }
-      }
-
-      setDataSuccessMsg('All 8 measurements submitted and field AI analysis completed successfully.');
     } catch (err: unknown) {
-      setDataErrorMsg(err instanceof Error ? err.message : 'Failed to record telemetry measurements.');
+      setDataErrorMsg(parseApiErrorMessage(err, 'Failed to record telemetry measurements.'));
     } finally {
       setSubmittingData(false);
     }
@@ -243,24 +330,27 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     setDiseaseError(null);
     setDiseaseResult(null);
 
+    const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
+    const targetFieldId = field.fieldId || fieldId || '';
+
     try {
       // 1. Upload image
-      const uploadRes = await monitoringService.uploadImage(field.farmId, field.fieldId, imageFile);
+      const uploadRes = await monitoringService.uploadImage(targetFarmId, targetFieldId, imageFile);
       const imageId = String(uploadRes.data?.imageId || uploadRes.data?.id || '');
       if (!imageId) throw new Error('Image uploaded but server did not return an image ID.');
 
       // 2. Submit disease analysis
-      const analysisRes = await monitoringService.analyzeDisease(field.farmId, field.fieldId, imageId);
+      const analysisRes = await monitoringService.analyzeDisease(targetFarmId, targetFieldId, imageId);
       setDiseaseResult(analysisRes.data || null);
 
       // Refresh analyses history
-      const analRes = await monitoringService.analyses(field.farmId, field.fieldId, null, 10);
+      const analRes = await monitoringService.analyses(targetFarmId, targetFieldId, null, 10);
       if (analRes?.data?.items) {
         setRecentAnalyses(analRes.data.items);
         setLatestAnalysis(analRes.data.items[0]);
       }
     } catch (err: unknown) {
-      setDiseaseError(err instanceof Error ? err.message : 'Disease analysis request failed.');
+      setDiseaseError(parseApiErrorMessage(err, 'Disease analysis request failed.'));
     } finally {
       setAnalyzingDisease(false);
     }
@@ -272,17 +362,20 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     setRunningAnalysis(true);
     setAnalysisError(null);
 
+    const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
+    const targetFieldId = field.fieldId || fieldId || '';
+
     try {
-      const res = await monitoringService.createAnalysis(field.farmId, field.fieldId);
+      const res = await monitoringService.createAnalysis(targetFarmId, targetFieldId);
       setLatestAnalysis(res.data || null);
 
       // Refresh analyses history
-      const analRes = await monitoringService.analyses(field.farmId, field.fieldId, null, 10);
+      const analRes = await monitoringService.analyses(targetFarmId, targetFieldId, null, 10);
       if (analRes?.data?.items) {
         setRecentAnalyses(analRes.data.items);
       }
     } catch (err: unknown) {
-      setAnalysisError(err instanceof Error ? err.message : 'AI analysis invocation failed.');
+      setAnalysisError(parseApiErrorMessage(err, 'AI analysis invocation failed.'));
     } finally {
       setRunningAnalysis(false);
     }
@@ -386,20 +479,27 @@ export const FarmerFieldDetailsPage: React.FC = () => {
             )}
           </div>
 
-          {/* Section 5: Field Status & Latest AI Insights (Moved up for high visibility) */}
-          <div className="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          {/* AI Agronomic Decision Section (High Visibility) */}
+          <div id="ai-decision" className="bg-surface-container-lowest rounded-2xl border border-outline-variant/30 p-6 shadow-sm space-y-4">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px] text-primary">vital_signs</span>
-                <h2 className="text-sm font-bold text-on-surface uppercase tracking-wide">
-                  Field Status & AI Agronomic State
+                <span className="material-symbols-outlined text-[22px] text-primary">psychiatry</span>
+                <h2 className="text-base font-bold text-on-surface uppercase tracking-wide">
+                  AI Agronomic Decision
                 </h2>
               </div>
-              {latestAnalysis?.createdAt && (
-                <span className="text-[11px] text-on-surface-variant">
-                  Last evaluated: {new Date(String(latestAnalysis.createdAt)).toLocaleString()}
-                </span>
-              )}
+              <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                {Boolean(latestAnalysis?.analysisId) && (
+                  <span className="font-mono bg-surface-container px-2 py-0.5 rounded text-[10px]">
+                    ID: {String(latestAnalysis?.analysisId).substring(0, 16)}...
+                  </span>
+                )}
+                {Boolean(latestAnalysis?.createdAt) && (
+                  <span>
+                    Evaluated: {new Date(String(latestAnalysis?.createdAt)).toLocaleString()}
+                  </span>
+                )}
+              </div>
             </div>
 
             {analysisError && (
@@ -555,6 +655,16 @@ export const FarmerFieldDetailsPage: React.FC = () => {
               <div className="p-3.5 rounded-xl bg-error/10 border border-error/30 text-xs font-semibold text-error flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">error</span>
                 <span>{dataErrorMsg}</span>
+              </div>
+            )}
+
+            {analyzingField && (
+              <div className="p-3.5 rounded-xl bg-secondary/10 border border-secondary/30 text-xs text-on-surface flex items-center gap-3">
+                <span className="material-symbols-outlined text-[20px] text-secondary animate-spin">sync</span>
+                <div className="flex-1">
+                  <p className="font-bold text-secondary">AI Agronomic Analysis in Progress</p>
+                  <p className="text-[11px] text-on-surface-variant">Evaluating soil chemistry, water requirements, and field health status. You can navigate away at any time.</p>
+                </div>
               </div>
             )}
 

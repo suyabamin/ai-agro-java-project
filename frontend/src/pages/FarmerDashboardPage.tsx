@@ -6,6 +6,7 @@ import { paymentService } from '../services/paymentService';
 import type { FieldAssignment } from '../types/assignment';
 import type { PaymentRecord } from '../types/payment';
 import type { Field } from '../types/field';
+import { monitoringService, type MonitoringRecord } from '../services/monitoringService';
 import { StatCard } from '../components/ui/StatCard';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
@@ -18,6 +19,7 @@ export const FarmerDashboardPage: React.FC = () => {
   const [activeAssignments, setActiveAssignments] = useState<FieldAssignment[]>([]);
   const [historyAssignments, setHistoryAssignments] = useState<FieldAssignment[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [fieldAnalyses, setFieldAnalyses] = useState<Record<string, MonitoringRecord>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,9 +36,28 @@ export const FarmerDashboardPage: React.FC = () => {
         assignmentService.fetchMyAssignmentHistory().catch(() => ({ data: { items: [] } })),
         paymentService.listMyPayments().catch(() => ({ data: [] })),
       ]);
-      setActiveAssignments(activeRes.data?.items || []);
+      const activeList = activeRes.data?.items || [];
+      setActiveAssignments(activeList);
       setHistoryAssignments(histRes.data?.items || []);
       setPayments(payRes.data || []);
+
+      // Fetch latest AI decisions for currently assigned fields
+      if (activeList.length > 0) {
+        const analysesMap: Record<string, MonitoringRecord> = {};
+        await Promise.allSettled(
+          activeList.map(async (a) => {
+            try {
+              const analRes = await monitoringService.listAgriculturalAnalyses(a.farmId, a.fieldId, null, 1);
+              if (analRes.data?.items && analRes.data.items.length > 0) {
+                analysesMap[a.fieldId] = analRes.data.items[0];
+              }
+            } catch {
+              // Ignore individual field load errors
+            }
+          })
+        );
+        setFieldAnalyses(analysesMap);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load farmer workspace data');
     } finally {
@@ -127,6 +148,175 @@ export const FarmerDashboardPage: React.FC = () => {
           subtitle="Disbursement Receipts"
           icon="receipt_long"
         />
+      </div>
+
+      {/* My Field AI Insights Section */}
+      <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 shadow-sm border border-outline-variant/30 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="material-symbols-outlined text-primary text-[22px]">psychiatry</span>
+              <h2 className="text-lg font-bold text-on-surface">My Field AI Insights</h2>
+            </div>
+            <p className="text-xs text-on-surface-variant">
+              Persisted agronomic intelligence, water requirements, and field condition evaluations across your assigned sectors.
+            </p>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-bold uppercase tracking-wider self-start sm:self-auto">
+            Synchronized with Owner Dashboard
+          </span>
+        </div>
+
+        {loading ? (
+          <LoadingSkeleton type="card" count={2} />
+        ) : activeAssignments.length === 0 ? (
+          <EmptyState
+            icon="psychiatry"
+            title="No Field AI Data Available"
+            description="You do not currently have any active field assignments. Once appointed to a field, uploaded telemetry triggers AI agronomic decisions here."
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {activeAssignments.map((a) => {
+              const ai = fieldAnalyses[a.fieldId];
+              return (
+                <div
+                  key={`ai-${a.assignmentId}`}
+                  className="bg-surface-container-low rounded-2xl p-6 border border-outline-variant/30 hover:shadow-md transition-all flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-4">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11px] text-on-surface-variant">
+                            Zone {a.fieldId.substring(0, 12)}...
+                          </span>
+                          <span className="px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold uppercase">
+                            Active Tenure
+                          </span>
+                        </div>
+                        <h3 className="font-bold text-base text-on-surface mt-1">
+                          {a.farmerName || 'Assigned Precision Zone'}
+                        </h3>
+                        <p className="text-[11px] text-on-surface-variant font-mono">
+                          Holding Farm: {a.farmId.substring(0, 14)}...
+                        </p>
+                      </div>
+                      <StatusBadge status={ai?.status || 'PENDING'} />
+                    </div>
+
+                    {/* AI Decision Cards */}
+                    {ai ? (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                          {/* Water Need */}
+                          <div className="p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30">
+                            <span className="text-[10px] font-bold uppercase text-on-surface-variant flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px] text-primary">water_drop</span>
+                              Water Need
+                            </span>
+                            <p className="text-sm font-extrabold text-on-surface mt-1">
+                              {String(ai.predictedWaterNeed || 'Sufficient')}
+                            </p>
+                            {ai.waterNeedConfidence !== undefined && (
+                              <span className="text-[10px] text-on-surface-variant font-medium">
+                                Conf: {(Number(ai.waterNeedConfidence) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Field Status */}
+                          <div className="p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30">
+                            <span className="text-[10px] font-bold uppercase text-on-surface-variant flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px] text-secondary">eco</span>
+                              Field Status
+                            </span>
+                            <p className="text-sm font-extrabold text-on-surface mt-1">
+                              {String(ai.predictedFieldStatus || 'Healthy')}
+                            </p>
+                            {ai.fieldStatusConfidence !== undefined && (
+                              <span className="text-[10px] text-on-surface-variant font-medium">
+                                Conf: {(Number(ai.fieldStatusConfidence) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Recommended Crop */}
+                          <div className="p-3 rounded-xl bg-surface-container-lowest border border-outline-variant/30 col-span-2 sm:col-span-1">
+                            <span className="text-[10px] font-bold uppercase text-on-surface-variant flex items-center gap-1">
+                              <span className="material-symbols-outlined text-[14px] text-tertiary">agriculture</span>
+                              Optimal Crop
+                            </span>
+                            <p className="text-sm font-extrabold text-on-surface mt-1 capitalize">
+                              {String(ai.recommendedCrop || 'Optimal')}
+                            </p>
+                            {ai.cropConfidence !== undefined && (
+                              <span className="text-[10px] text-on-surface-variant font-medium">
+                                Conf: {(Number(ai.cropConfidence) * 100).toFixed(0)}%
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Disease Detection Notice */}
+                        <div className="p-2.5 rounded-xl bg-surface-container-lowest/80 border border-outline-variant/20 flex items-center justify-between text-xs">
+                          <span className="text-[11px] text-on-surface-variant flex items-center gap-1.5">
+                            <span className="material-symbols-outlined text-[16px] text-outline">verified</span>
+                            Disease Diagnostic Status:
+                          </span>
+                          <span className="px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-mono text-[10px] font-bold">
+                            {String(ai.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
+                          </span>
+                        </div>
+
+                        {/* Metadata Footer */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-on-surface-variant pt-1 border-t border-outline-variant/20">
+                          <span>
+                            Evaluated: {ai.createdAt ? new Date(String(ai.createdAt)).toLocaleString() : 'Recent'}
+                          </span>
+                          {Boolean(ai.tabularModelVersion) && (
+                            <span className="font-mono text-[10px] bg-surface-container px-2 py-0.5 rounded">
+                              {String(ai.tabularModelVersion)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/30 text-center space-y-2">
+                        <span className="material-symbols-outlined text-primary/60 text-[28px]">pending_actions</span>
+                        <p className="text-xs font-semibold text-on-surface">No Telemetry Recorded Yet</p>
+                        <p className="text-[11px] text-on-surface-variant">
+                          Submit your first 8 soil measurements in the field workdesk to generate AI decisions.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-3 border-t border-outline-variant/20 flex items-center gap-2">
+                    <Link
+                      to={`/farmer/fields/${a.fieldId}`}
+                      className="flex-1 h-9 rounded-xl bg-primary hover:bg-secondary text-on-primary font-bold text-xs flex items-center justify-center gap-1.5 no-underline shadow-sm transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">upload_file</span>
+                      <span>Upload Data & Workdesk</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleInspectField(a.fieldId)}
+                      disabled={inspectLoading}
+                      className="h-9 px-3.5 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-xs flex items-center justify-center gap-1 cursor-pointer transition-all"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">monitoring</span>
+                      <span>Logs</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Active Field Assignments Grid */}
