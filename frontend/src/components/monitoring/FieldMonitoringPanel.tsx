@@ -24,6 +24,7 @@ export const FieldMonitoringPanel: React.FC<Props> = ({ farmId, fieldId: fixedFi
   const [history, setHistory] = useState<MonitoringRecord[]>([]);
   const [telemetryHistory, setTelemetryHistory] = useState<MonitoringRecord[]>([]);
   const [analyses, setAnalyses] = useState<MonitoringRecord[]>([]);
+  const [agriculturalAnalyses, setAgriculturalAnalyses] = useState<MonitoringRecord[]>([]);
   const [plans, setPlans] = useState<MonitoringRecord[]>([]);
   const [imageCursor, setImageCursor] = useState<string | null>(null);
   const [imageHasMore, setImageHasMore] = useState(false);
@@ -52,7 +53,7 @@ export const FieldMonitoringPanel: React.FC<Props> = ({ farmId, fieldId: fixedFi
 
   const refresh = useCallback(async () => {
     if (!selected) return;
-    const [soil, imagePage, historyPage, telemetryPage, analysisPage, planPage, availability] = await Promise.all([
+    const [soil, imagePage, historyPage, telemetryPage, analysisPage, planPage, availability, agriPage] = await Promise.all([
       monitoringService.telemetry(farmId, selected), monitoringService.listImages(farmId, selected), monitoringService.history(
         farmId, selected, undefined, eventFilter || undefined,
         historyFrom ? Date.parse(`${historyFrom}T00:00:00Z`) : undefined,
@@ -62,9 +63,11 @@ export const FieldMonitoringPanel: React.FC<Props> = ({ farmId, fieldId: fixedFi
         telemetryTo ? Date.parse(`${telemetryTo}T23:59:59Z`) : undefined),
       monitoringService.analyses(farmId, selected), monitoringService.irrigationPlans(farmId, selected),
       monitoringService.diseaseAvailability(farmId, selected),
+      monitoringService.listAgriculturalAnalyses(farmId, selected, null, 10).catch(() => ({ data: { items: [], nextCursor: null, hasNext: false, pageSize: 10 } })),
     ]);
     setReadings(soil.data || []); setImages(imagePage.data?.items || []); setHistory(historyPage.data?.items || []);
     setTelemetryHistory(telemetryPage.data?.items || []); setAnalyses(analysisPage.data?.items || []); setPlans(planPage.data?.items || []);
+    setAgriculturalAnalyses(agriPage.data?.items || []);
     setImageCursor(imagePage.data?.nextCursor || null); setImageHasMore(Boolean(imagePage.data?.hasNext));
     setAnalysisCursor(analysisPage.data?.nextCursor || null); setAnalysisHasMore(Boolean(analysisPage.data?.hasNext));
     setPlanCursor(planPage.data?.nextCursor || null); setPlanHasMore(Boolean(planPage.data?.hasNext));
@@ -229,6 +232,70 @@ export const FieldMonitoringPanel: React.FC<Props> = ({ farmId, fieldId: fixedFi
       {recordDetails[`image:${String(item.imageId || item.id)}`] && <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(recordDetails[`image:${String(item.imageId || item.id)}`], null, 2)}</pre>}
     </div>)}
     {imageHasMore ? <button disabled={loadingPage !== null} onClick={loadMoreImages}>{loadingPage === 'images' ? 'Loading images…' : 'Load more images'}</button> : <p>End of image list.</p>}
+    <h4>Agricultural AI Decisions & Evidence Summaries ({agriculturalAnalyses.length})</h4>
+    {agriculturalAnalyses.length === 0 ? (
+      <p style={{ color: '#6B7280', fontSize: '0.85rem' }}>No agricultural AI evaluations recorded yet for this field.</p>
+    ) : (
+      <div style={{ marginBottom: 16 }}>
+        {agriculturalAnalyses.map((item, idx) => (
+          <div
+            key={String(item.id || item.analysisId)}
+            className="monitoring-record-row"
+            style={{
+              padding: 12,
+              marginBottom: 8,
+              border: idx === 0 ? '1px solid #10B981' : '1px solid #E5E7EB',
+              borderRadius: 6,
+              background: idx === 0 ? '#F0FDF4' : '#F9FAFB'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                {idx === 0 ? '★ Latest Decision: ' : 'Previous Decision: '}
+                <span style={{ color: item.status === 'COMPLETED' ? '#047857' : item.status === 'FAILED' ? '#DC2626' : '#D97706' }}>
+                  {String(item.status)}
+                </span>
+              </span>
+              <span style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                {item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : 'N/A'}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8, fontSize: '0.8rem', margin: '8px 0' }}>
+              <div><strong>Water Need:</strong> {String(item.predictedWaterNeed || item.waterNeed || item.water_need || 'N/A')}</div>
+              <div><strong>Field Status:</strong> {String(item.predictedFieldStatus || item.fieldStatus || item.field_status || 'N/A')}</div>
+              <div><strong>Optimal Crop:</strong> {String(item.recommendedCrop || item.recommended_crop || item.optimalCrop || 'N/A')}</div>
+              <div><strong>Disease Status:</strong> {String(item.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}</div>
+            </div>
+
+            {Boolean(item.tabularModelVersion) && (
+              <div style={{ fontSize: '0.75rem', color: '#4B5563', marginTop: 4 }}>
+                Model: <code>{String(item.tabularModelVersion)}</code> ({String(item.labelProvenance || 'rule_derived')})
+              </div>
+            )}
+
+            <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => showDetails(`agri:${String(item.analysisId || item.id)}`, () => monitoringService.agriculturalAnalysis(farmId, selected, String(item.analysisId || item.id)))}
+              >
+                Inspect Analysis Details
+              </button>
+              <span style={{ fontSize: '0.7rem', color: '#9CA3AF', fontFamily: 'monospace' }}>
+                ID: {String(item.analysisId || item.id)}
+              </span>
+            </div>
+
+            {recordDetails[`agri:${String(item.analysisId || item.id)}`] && (
+              <pre style={{ whiteSpace: 'pre-wrap', marginTop: 8, padding: 8, background: '#fff', border: '1px solid #D1D5DB', borderRadius: 4, fontSize: '0.75rem' }}>
+                {JSON.stringify(recordDetails[`agri:${String(item.analysisId || item.id)}`], null, 2)}
+              </pre>
+            )}
+          </div>
+        ))}
+      </div>
+    )}
+
     <h4>Disease analyses ({analyses.length})</h4>
     {analyses.map(item => <div className="monitoring-record-row" key={String(item.id || item.analysisId)}>{String(item.analysisType || 'DISEASE_DETECTION')}: <strong>{String(item.status)}</strong>{item.status === 'MODEL_UNAVAILABLE' ? ' — no diagnosis or confidence was produced.' : ''}{item.status === 'COMPLETED' ? ` — ${String(item.predictedClass)} · score ${String(item.confidenceScore)} (${String(item.confidenceSemantics || 'model output')})` : ''}{item.errorMessage ? ` — ${String(item.errorMessage)}` : ''}
       <button onClick={() => showDetails(`analysis:${String(item.analysisId || item.id)}`, () => monitoringService.analysis(farmId, selected, String(item.analysisId || item.id)))}>Details</button>

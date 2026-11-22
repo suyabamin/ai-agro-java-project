@@ -21,7 +21,7 @@ export const AssignFarmerModal: React.FC<AssignFarmerModalProps> = ({
 }) => {
   const [farmerUid, setFarmerUid] = useState('');
   const [sourceApplicationId, setSourceApplicationId] = useState('');
-  const [permissions, setPermissions] = useState<string[]>(['READ', 'WRITE_LOGS']);
+  const [permissions, setPermissions] = useState<string[]>(['READ', 'WRITE_LOGS', 'TELEMETRY']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -172,7 +172,7 @@ export const AssignFarmerModal: React.FC<AssignFarmerModalProps> = ({
               Granted Operational Permissions
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {['READ', 'WRITE_LOGS'].map((perm) => (
+              {['READ', 'WRITE_LOGS', 'TELEMETRY'].map((perm) => (
                 <button
                   type="button"
                   key={perm}
