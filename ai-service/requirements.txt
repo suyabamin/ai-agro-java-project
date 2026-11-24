@@ -7,3 +7,5 @@ opencv-python-headless>=4.10,<5
 numpy>=1.26,<3
 scikit-learn>=1.9,<2
 joblib>=1.6,<2
+ai-edge-litert==2.4.0
+python-multipart>=0.0.12

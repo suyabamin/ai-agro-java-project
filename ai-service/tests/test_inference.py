@@ -13,6 +13,7 @@ from app.core.model_registry import ModelRegistry
 from app.core.image_preprocessing import ImageValidationError, decode_and_preprocess
 from app.core.inference import run_inference
 from app.main import app
+from app.services.disease_detection_service import DiseaseDetectionService
 
 client = TestClient(app)
 PNG_HEADER = b"\x89PNG\r\n\x1a\n"
@@ -34,7 +35,7 @@ def test_inference_fails_closed_when_service_key_is_not_configured(monkeypatch):
 
 def test_missing_model_response_contains_no_prediction_or_confidence(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "backend-test-key")
-    monkeypatch.setattr(inference, "get_model_registry", lambda: ModelRegistry(tmp_path))
+    monkeypatch.setattr(inference, "get_disease_service", lambda: DiseaseDetectionService(tmp_path))
     response = client.post(
         "/api/v1/inference/disease",
         content=PNG_HEADER + b"image bytes",
@@ -43,16 +44,17 @@ def test_missing_model_response_contains_no_prediction_or_confidence(monkeypatch
     assert response.status_code == 200
     result = response.json()
     assert result["status"] == "MODEL_UNAVAILABLE"
+    assert result["success"] is False
     assert result["predicted_class"] is None
     assert result["predicted_class_id"] is None
     assert result["confidence_score"] is None
+    assert result["isHealthy"] is None
     assert result["is_mock"] is False
-    assert "trained, evaluated model" in result["message"]
 
 
 def test_invalid_image_signature_is_rejected_even_without_model(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "backend-test-key")
-    monkeypatch.setattr(inference, "get_model_registry", lambda: ModelRegistry(tmp_path))
+    monkeypatch.setattr(inference, "get_disease_service", lambda: DiseaseDetectionService(tmp_path))
     response = client.post(
         "/api/v1/inference/disease",
         content=b"GIF89a",
@@ -64,7 +66,7 @@ def test_invalid_image_signature_is_rejected_even_without_model(monkeypatch, tmp
 
 def test_declared_content_type_must_match_image_signature(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "backend-test-key")
-    monkeypatch.setattr(inference, "get_model_registry", lambda: ModelRegistry(tmp_path))
+    monkeypatch.setattr(inference, "get_disease_service", lambda: DiseaseDetectionService(tmp_path))
     response = client.post(
         "/api/v1/inference/disease",
         content=PNG_HEADER + b"payload",
@@ -77,7 +79,7 @@ def test_declared_content_type_must_match_image_signature(monkeypatch, tmp_path)
 def test_upload_byte_limit_is_enforced(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "backend-test-key")
     monkeypatch.setattr(settings, "MAX_IMAGE_BYTES", 12)
-    monkeypatch.setattr(inference, "get_model_registry", lambda: ModelRegistry(tmp_path))
+    monkeypatch.setattr(inference, "get_disease_service", lambda: DiseaseDetectionService(tmp_path))
     response = client.post(
         "/api/v1/inference/disease",
         content=PNG_HEADER + b"123456789",
@@ -119,7 +121,7 @@ def test_model_registry_rejects_metadata_that_claims_no_evaluation(tmp_path):
 
 
 def test_diagnostics_reports_model_unavailable_without_inference_claim(monkeypatch, tmp_path):
-    monkeypatch.setattr(inference, "get_model_registry", lambda: ModelRegistry(tmp_path))
+    monkeypatch.setattr(inference, "get_disease_service", lambda: DiseaseDetectionService(tmp_path))
     response = client.get("/api/v1/health/diagnostics")
     assert response.status_code == 200
     body = response.json()
@@ -130,8 +132,11 @@ def test_diagnostics_reports_model_unavailable_without_inference_claim(monkeypat
 
 def test_diagnostics_requires_backend_auth_even_when_a_model_is_loaded(monkeypatch):
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "")
-    metadata = SimpleNamespace(model_name="fixture", model_version="test-only")
-    monkeypatch.setattr(inference, "get_model_registry", lambda: SimpleNamespace(available=True, metadata=metadata))
+    monkeypatch.setattr(
+        inference,
+        "get_disease_service",
+        lambda: SimpleNamespace(available=True, model_name="fixture", model_version="test-only", labels={0: "A"}, error_code=None),
+    )
     response = client.get("/api/v1/health/diagnostics")
     body = response.json()
     assert body["inference_ready"] is False

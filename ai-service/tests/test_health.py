@@ -27,9 +27,10 @@ def test_v1_health_diagnostics():
     data = response.json()
     assert data["status"] == "UP"
     assert data["environment"] == "development"
-    assert data["inference_ready"] is False
-    assert data["active_model"] is None
-    assert "metadata" in data
+    assert data["inference_ready"] is True
+    assert data["active_model"] == "crop_disease_model@su-0.1-tflite"
+    assert data["metadata"]["disease_inference_status"] == "AVAILABLE"
+    assert data["metadata"]["class_count"] == 94
 
 
 def test_openapi_schema_available():

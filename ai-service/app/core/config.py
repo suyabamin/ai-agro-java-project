@@ -17,6 +17,7 @@ class Settings:
         if origin.strip()
     ]
     MODEL_DIR: Path = Path(os.getenv("AGROAI_MODEL_DIR", str(Path(__file__).resolve().parents[3] / "ai model"))).resolve()
+    DISEASE_MODEL_DIR: Path = Path(os.getenv("AGROAI_DISEASE_MODEL_DIR", str(Path(__file__).resolve().parents[1] / "models" / "disease"))).resolve()
     AI_SERVICE_KEY: str = os.getenv("AGROAI_AI_SERVICE_KEY", "agroai-local-dev-key-2026" if os.getenv("APP_ENV", "development") != "production" else "")
     MAX_IMAGE_BYTES: int = int(os.getenv("AGROAI_MAX_IMAGE_BYTES", str(8 * 1024 * 1024)))
     MAX_IMAGE_PIXELS: int = int(os.getenv("AGROAI_MAX_IMAGE_PIXELS", "40000000"))
