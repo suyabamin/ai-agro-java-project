@@ -233,8 +233,12 @@ public class AgriculturalAnalysisService {
         Field authorizedField = authorization.requireReadAccess(farmId, fieldId, uid);
         String resolvedFieldId = authorizedField != null && authorizedField.getFieldId() != null ? authorizedField.getFieldId() : fieldId;
         int pageSize = CursorPagination.validatePageSize(size);
-        return repository.page("ai_analysis_results", farmId, resolvedFieldId, CursorPagination.decode(cursor),
+        CursorPage<Map<String, Object>> raw = repository.page("ai_analysis_results", farmId, resolvedFieldId, CursorPagination.decode(cursor),
                 pageSize, Map.of(), null, null);
+        List<Map<String, Object>> agriOnly = raw.items().stream()
+                .filter(item -> !DiseaseAnalysisService.ANALYSIS_TYPE.equals(item.get("analysisType")))
+                .toList();
+        return new CursorPage<>(agriOnly, raw.nextCursor(), raw.hasNext());
     }
 
     public Map<String, Map<String, Object>> getLatestForFarm(String farmId, String uid) {
