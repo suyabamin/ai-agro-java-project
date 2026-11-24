@@ -265,7 +265,7 @@ export const FieldMonitoringPanel: React.FC<Props> = ({ farmId, fieldId: fixedFi
               <div><strong>Water Need:</strong> {String(item.predictedWaterNeed || item.waterNeed || item.water_need || 'N/A')}</div>
               <div><strong>Field Status:</strong> {String(item.predictedFieldStatus || item.fieldStatus || item.field_status || 'N/A')}</div>
               <div><strong>Optimal Crop:</strong> {String(item.recommendedCrop || item.recommended_crop || item.optimalCrop || 'N/A')}</div>
-              <div><strong>Disease Status:</strong> {String(item.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}</div>
+              <div><strong>Disease Status:</strong> {modelAvailability?.available && (!item.diseaseDetectionStatus || item.diseaseDetectionStatus === 'MODEL_UNAVAILABLE') ? 'AVAILABLE' : String(item.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}</div>
             </div>
 
             {Boolean(item.tabularModelVersion) && (

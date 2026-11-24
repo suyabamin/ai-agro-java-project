@@ -47,9 +47,23 @@ export const FarmerDashboardPage: React.FC = () => {
         await Promise.allSettled(
           activeList.map(async (a) => {
             try {
-              const analRes = await monitoringService.listAgriculturalAnalyses(a.farmId, a.fieldId, null, 1);
-              if (analRes.data?.items && analRes.data.items.length > 0) {
-                analysesMap[a.fieldId] = analRes.data.items[0];
+              const [analRes, disRes, availRes] = await Promise.allSettled([
+                monitoringService.listAgriculturalAnalyses(a.farmId, a.fieldId, null, 1),
+                monitoringService.analyses(a.farmId, a.fieldId, null, 1),
+                monitoringService.diseaseAvailability(a.farmId, a.fieldId),
+              ]);
+              if (analRes.status === 'fulfilled' && analRes.value.data?.items?.length) {
+                const merged = { ...analRes.value.data.items[0] };
+                const latestDis = disRes.status === 'fulfilled' ? disRes.value.data?.items?.[0] : undefined;
+                const avail = availRes.status === 'fulfilled' ? availRes.value.data : undefined;
+                if (latestDis && latestDis.status === 'COMPLETED' && (latestDis.diseaseName || latestDis.predictedClass)) {
+                  const label = String(latestDis.diseaseName || latestDis.predictedClass).replace(/_/g, ' ');
+                  const conf = typeof latestDis.confidence === 'number' ? ` (${latestDis.confidence.toFixed(1)}%)` : '';
+                  merged.diseaseDetectionStatus = `${label}${conf}`;
+                } else if (avail?.available && (!merged.diseaseDetectionStatus || merged.diseaseDetectionStatus === 'MODEL_UNAVAILABLE')) {
+                  merged.diseaseDetectionStatus = 'AVAILABLE';
+                }
+                analysesMap[a.fieldId] = merged;
               }
             } catch {
               // Ignore individual field load errors

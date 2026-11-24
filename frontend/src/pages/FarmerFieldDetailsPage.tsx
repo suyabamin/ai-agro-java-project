@@ -85,6 +85,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
   const [diseaseStep, setDiseaseStep] = useState<'idle' | 'uploading' | 'inferring'>('idle');
   const [diseaseResult, setDiseaseResult] = useState<MonitoringRecord | null>(null);
   const [diseaseAnalyses, setDiseaseAnalyses] = useState<MonitoringRecord[]>([]);
+  const [diseaseAvailability, setDiseaseAvailability] = useState<{ available?: boolean; status?: string } | null>(null);
   const [diseaseError, setDiseaseError] = useState<string | null>(null);
   const [researchBusy, setResearchBusy] = useState(false);
 
@@ -129,10 +130,11 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       if (fieldData) {
         const farmId = fieldData.farmId;
         // Fetch telemetry & analyses history concurrently
-        const [telRes, analRes, diseaseRes] = await Promise.allSettled([
+        const [telRes, analRes, diseaseRes, availRes] = await Promise.allSettled([
           monitoringService.telemetry(farmId, fieldId),
           monitoringService.listAgriculturalAnalyses(farmId, fieldId, null, 10),
           monitoringService.analyses(farmId, fieldId, null, 10),
+          monitoringService.diseaseAvailability(farmId, fieldId),
         ]);
 
         if (telRes.status === 'fulfilled' && telRes.value?.data) {
@@ -151,6 +153,9 @@ export const FarmerFieldDetailsPage: React.FC = () => {
           if (dItems.length > 0) {
             setDiseaseResult(dItems[0]);
           }
+        }
+        if (availRes.status === 'fulfilled' && availRes.value?.data) {
+          setDiseaseAvailability(availRes.value.data as { available?: boolean; status?: string });
         }
       }
     } catch (e: unknown) {
@@ -634,11 +639,25 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                         Disease Detection Engine
                       </span>
                       <div className="text-base font-bold text-on-surface">
-                        {String(latestAnalysis.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
+                        {diseaseResult?.status === 'COMPLETED'
+                          ? 'COMPLETED'
+                          : diseaseResult?.status
+                            ? String(diseaseResult.status)
+                            : diseaseAvailability?.available
+                              ? 'AVAILABLE'
+                              : String(latestAnalysis.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
                       </div>
                     </div>
                     <div className="mt-2 text-[10px] text-on-surface-variant">
-                      {latestAnalysis.predictedDisease ? String(latestAnalysis.predictedDisease) : 'No unverified diagnosis fabricated'}
+                      {diseaseResult?.status === 'COMPLETED' && (diseaseResult.diseaseName || diseaseResult.predictedClass)
+                        ? `${String(diseaseResult.diseaseName || diseaseResult.predictedClass).replace(/_/g, ' ')}${
+                            typeof diseaseResult.confidence === 'number' ? ` (${diseaseResult.confidence.toFixed(1)}%)` : ''
+                          }`
+                        : latestAnalysis.predictedDisease
+                          ? String(latestAnalysis.predictedDisease)
+                          : diseaseAvailability?.available
+                            ? 'TFLite 94-class engine ready — upload a leaf image below'
+                            : 'No unverified diagnosis fabricated'}
                     </div>
                   </div>
                 </div>

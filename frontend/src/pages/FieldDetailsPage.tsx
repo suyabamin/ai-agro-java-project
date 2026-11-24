@@ -1085,7 +1085,13 @@ export const FieldDetailsPage: React.FC = () => {
                         <div className="bg-surface-container-lowest p-2 rounded-lg border border-outline-variant/20">
                           <span className="text-[10px] text-on-surface-variant uppercase font-semibold">Disease</span>
                           <div className="font-bold text-on-surface-variant">
-                            {String(item.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
+                            {diseaseAnalyses[0]?.status === 'COMPLETED' && (diseaseAnalyses[0]?.diseaseName || diseaseAnalyses[0]?.predictedClass)
+                              ? String(diseaseAnalyses[0].diseaseName || diseaseAnalyses[0].predictedClass).replace(/_/g, ' ')
+                              : item.diseaseDetectionStatus && item.diseaseDetectionStatus !== 'MODEL_UNAVAILABLE'
+                                ? String(item.diseaseDetectionStatus)
+                                : modelAvailability?.available
+                                  ? 'AVAILABLE'
+                                  : String(item.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
                           </div>
                         </div>
                       </div>

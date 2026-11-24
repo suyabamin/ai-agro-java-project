@@ -86,14 +86,11 @@ public class AgriculturalAnalysisService {
         record.put("measurements", List.of());
         record.put("riskIndicators", List.of());
         record.put("recommendations", List.of());
-        record.put("diseaseDetectionStatus", "MODEL_UNAVAILABLE");
-        record.put("predictedDisease", null);
-        record.put("confidenceScore", null);
+        resolveDiseaseEngineState(farmId, resolvedFieldId, record);
         record.put("tabularStatus", "PENDING");
         record.put("ruleVersion", "evidence-summary-v1");
         record.put("explanation", "This record summarizes stored field and soil measurements with tabular ML inference when complete readings are present.");
-        record.put("limitations", List.of("Disease detection is unavailable until the user's trained and evaluated model is supplied.",
-                "Tabular Water Need and Field Status are predicted using models trained on rule-derived agronomic labels (label_method=agronomic_rule_v1)."));
+        record.put("limitations", buildLimitations(String.valueOf(record.get("diseaseDetectionStatus")), false));
         record.put("createdAt", now.toString());
         record.put("createdAtEpochMs", now.toEpochMilli());
 
@@ -190,11 +187,8 @@ public class AgriculturalAnalysisService {
                 record.put("tabularStatus", "INSUFFICIENT_TELEMETRY");
             }
 
-            record.put("limitations", List.of(
-                    "Disease detection is unavailable until the user's trained and evaluated model is supplied.",
-                    "Tabular Water Need and Field Status are predicted using models trained on rule-derived agronomic labels (label_method=agronomic_rule_v1).",
-                    evidence.isEmpty() ? "No telemetry records were available at analysis time." : "This summary does not infer unmeasured soil conditions."
-            ));
+            resolveDiseaseEngineState(farmId, resolvedFieldId, record);
+            record.put("limitations", buildLimitations(String.valueOf(record.get("diseaseDetectionStatus")), evidence.isEmpty()));
             record.put("updatedAt", Instant.now().toString());
             record.put("updatedAtEpochMs", Instant.now().toEpochMilli());
 
@@ -216,6 +210,65 @@ public class AgriculturalAnalysisService {
                 log.error("Failed to persist failed analysis state", ex);
             }
         }
+    }
+
+    private void resolveDiseaseEngineState(String farmId, String fieldId, Map<String, Object> record) {
+        String status = "MODEL_UNAVAILABLE";
+        Object predictedDisease = null;
+        Object confidenceScore = null;
+        try {
+            CursorPage<Map<String, Object>> page = repository.page(
+                    "ai_analysis_results", farmId, fieldId, null, 10,
+                    Map.of("analysisType", DiseaseAnalysisService.ANALYSIS_TYPE), null, null);
+            if (page != null && page.items() != null) {
+                for (Map<String, Object> item : page.items()) {
+                    if ("COMPLETED".equals(item.get("status")) && item.get("predictedClass") != null) {
+                        status = "COMPLETED";
+                        predictedDisease = item.get("predictedClass");
+                        confidenceScore = item.get("confidenceScore");
+                        record.put("latestDiseaseAnalysisId", item.get("analysisId"));
+                        record.put("diseaseConfidence", item.get("confidence"));
+                        record.put("isHealthy", item.get("isHealthy"));
+                        break;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not inspect latest disease analysis for field {}: {}", fieldId, e.getMessage());
+        }
+
+        if ("MODEL_UNAVAILABLE".equals(status) && aiClient != null) {
+            try {
+                Map<String, Object> avail = aiClient.availability();
+                if (avail != null && Boolean.TRUE.equals(avail.get("available"))) {
+                    status = "AVAILABLE";
+                }
+            } catch (Exception e) {
+                log.debug("AI disease availability check failed: {}", e.getMessage());
+            }
+        }
+
+        record.put("diseaseDetectionStatus", status);
+        record.put("predictedDisease", predictedDisease);
+        record.put("confidenceScore", confidenceScore);
+    }
+
+    private static List<String> buildLimitations(String diseaseStatus, boolean noTelemetry) {
+        List<String> list = new ArrayList<>();
+        if ("AVAILABLE".equals(diseaseStatus)) {
+            list.add("Disease detection TFLite engine is ready; upload a leaf image for image-based disease inference.");
+        } else if ("COMPLETED".equals(diseaseStatus)) {
+            list.add("Latest leaf disease prediction is linked from persisted TFLite image analysis.");
+        } else {
+            list.add("Disease detection is unavailable until the trained TFLite model is online.");
+        }
+        list.add("Tabular Water Need and Field Status are predicted using models trained on rule-derived agronomic labels (label_method=agronomic_rule_v1).");
+        if (noTelemetry) {
+            list.add("No telemetry records were available at analysis time.");
+        } else {
+            list.add("This summary does not infer unmeasured soil conditions.");
+        }
+        return list;
     }
 
     public Map<String, Object> get(String farmId, String fieldId, String analysisId, String uid) {
