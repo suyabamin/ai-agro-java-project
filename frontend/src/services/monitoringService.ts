@@ -90,6 +90,12 @@ export const monitoringService = {
   async analysis(farmId: string, fieldId: string, analysisId: string) {
     return (await apiClient.get<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/disease-analyses/${encodeURIComponent(analysisId)}`)).data;
   },
+  async triggerDiseaseResearch(farmId: string, fieldId: string, analysisId: string) {
+    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/disease-analyses/${encodeURIComponent(analysisId)}/research`)).data;
+  },
+  async getDiseaseResearch(farmId: string, fieldId: string, analysisId: string) {
+    return (await apiClient.get<ApiResponse<MonitoringRecord[]>>(`${root(farmId, fieldId)}/disease-analyses/${encodeURIComponent(analysisId)}/research`)).data;
+  },
   async createIrrigationPlan(farmId: string, fieldId: string) {
     return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/irrigation-plans`)).data;
   },

@@ -86,6 +86,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
   const [diseaseResult, setDiseaseResult] = useState<MonitoringRecord | null>(null);
   const [diseaseAnalyses, setDiseaseAnalyses] = useState<MonitoringRecord[]>([]);
   const [diseaseError, setDiseaseError] = useState<string | null>(null);
+  const [researchBusy, setResearchBusy] = useState(false);
 
   // AI Analysis State
   const [runningAnalysis, setRunningAnalysis] = useState(false);
@@ -376,6 +377,48 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       setDiseaseStep('idle');
     }
   };
+
+  const handleTriggerResearch = async (analysisId: string) => {
+    if (!field || !analysisId) return;
+    const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
+    const targetFieldId = field.fieldId || fieldId || '';
+    setResearchBusy(true);
+    try {
+      await monitoringService.triggerDiseaseResearch(targetFarmId, targetFieldId, analysisId);
+      const updated = await monitoringService.analysis(targetFarmId, targetFieldId, analysisId);
+      if (updated.data) setDiseaseResult(updated.data);
+    } catch (err: unknown) {
+      setDiseaseError(parseApiErrorMessage(err, 'Could not trigger disease research.'));
+    } finally {
+      setResearchBusy(false);
+    }
+  };
+
+  // Poll diseaseResult while background Selenium research is PENDING or PROCESSING
+  useEffect(() => {
+    if (!field || !diseaseResult) return;
+    const rStatus = String(diseaseResult.researchStatus || '').toUpperCase();
+    const analysisId = String(diseaseResult.analysisId || diseaseResult.id || '');
+    if (!analysisId || (rStatus !== 'PENDING' && rStatus !== 'PROCESSING')) return;
+
+    const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
+    const targetFieldId = field.fieldId || fieldId || '';
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await monitoringService.analysis(targetFarmId, targetFieldId, analysisId);
+        if (res.data) {
+          setDiseaseResult(res.data);
+          const nextStatus = String(res.data.researchStatus || '').toUpperCase();
+          if (nextStatus !== 'PENDING' && nextStatus !== 'PROCESSING') {
+            window.clearInterval(timer);
+          }
+        }
+      } catch {
+        // Keep polling silently until terminal state or unmount
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [field, fieldId, diseaseResult]);
 
   // Run AI Field Status & Water Need Analysis
   const handleRunAiAnalysis = async () => {
@@ -986,6 +1029,8 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                 <DiseaseDetectionCard
                   analysis={diseaseResult}
                   onRetry={imageFile ? handleUploadAndDetectDisease : undefined}
+                  onTriggerResearch={handleTriggerResearch}
+                  researchBusy={researchBusy}
                 />
               </div>
             </div>

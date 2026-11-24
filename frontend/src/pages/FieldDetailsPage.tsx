@@ -41,6 +41,7 @@ export const FieldDetailsPage: React.FC = () => {
   const [historicalAnalyses, setHistoricalAnalyses] = useState<MonitoringRecord[]>([]);
   const [latestDiseaseAnalysis, setLatestDiseaseAnalysis] = useState<MonitoringRecord | null>(null);
   const [diseaseAnalyses, setDiseaseAnalyses] = useState<MonitoringRecord[]>([]);
+  const [researchBusy, setResearchBusy] = useState(false);
   const [selectedAnalysisDetail, setSelectedAnalysisDetail] = useState<MonitoringRecord | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -813,6 +814,17 @@ export const FieldDetailsPage: React.FC = () => {
         <div className="space-y-4">
           <DiseaseDetectionCard
             analysis={latestDiseaseAnalysis}
+            researchBusy={researchBusy}
+            onTriggerResearch={async (analysisId) => {
+              if (!activeFarm || !fieldId) return;
+              setResearchBusy(true);
+              try {
+                await monitoringService.triggerDiseaseResearch(activeFarm.farmId, fieldId, analysisId);
+                await loadMonitoringData();
+              } finally {
+                setResearchBusy(false);
+              }
+            }}
             title="Latest Persisted Leaf Disease Scan (Shared with Farmer)"
           />
           {diseaseAnalyses.length > 1 && (
