@@ -3,7 +3,9 @@ package com.agroai.controller;
 import com.agroai.dto.ApiResponse;
 import com.agroai.security.FirebaseUserDetails;
 import com.agroai.service.AgriculturalAnalysisService;
+import com.agroai.service.DiseaseAnalysisService;
 import com.agroai.service.SoilTelemetryService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,8 +18,8 @@ import java.util.Map;
 
 /**
  * Farm-level monitoring aggregation controller.
- * Provides high-efficiency batch retrieval of latest field-wise telemetry and AI agronomic decisions,
- * avoiding N+1 requests from dashboard clients.
+ * Provides high-efficiency batch retrieval of latest field-wise telemetry, AI agronomic decisions,
+ * and disease analyses, avoiding N+1 requests from dashboard clients.
  */
 @RestController
 @RequestMapping("/api/v1/farms/{farmId}/monitoring")
@@ -25,11 +27,20 @@ public class FarmMonitoringController {
 
     private final AgriculturalAnalysisService agriculturalAnalysis;
     private final SoilTelemetryService telemetry;
+    private final DiseaseAnalysisService diseaseAnalysis;
 
     public FarmMonitoringController(AgriculturalAnalysisService agriculturalAnalysis,
                                     SoilTelemetryService telemetry) {
+        this(agriculturalAnalysis, telemetry, null);
+    }
+
+    @Autowired
+    public FarmMonitoringController(AgriculturalAnalysisService agriculturalAnalysis,
+                                    SoilTelemetryService telemetry,
+                                    DiseaseAnalysisService diseaseAnalysis) {
         this.agriculturalAnalysis = agriculturalAnalysis;
         this.telemetry = telemetry;
+        this.diseaseAnalysis = diseaseAnalysis;
     }
 
     /**
@@ -42,6 +53,20 @@ public class FarmMonitoringController {
             @AuthenticationPrincipal FirebaseUserDetails user) {
         Map<String, Map<String, Object>> latest = agriculturalAnalysis.getLatestForFarm(farmId, user.getUid());
         return ResponseEntity.ok(ApiResponse.success(latest, "Latest agricultural analyses retrieved"));
+    }
+
+    /**
+     * Retrieves the latest persisted crop leaf disease analysis for each active field under this farm.
+     * Accessible to active farm members (owners, managers, assigned farmers).
+     */
+    @GetMapping("/disease-analyses/latest")
+    public ResponseEntity<ApiResponse<Map<String, Map<String, Object>>>> getLatestDiseaseAnalyses(
+            @PathVariable String farmId,
+            @AuthenticationPrincipal FirebaseUserDetails user) {
+        Map<String, Map<String, Object>> latest = diseaseAnalysis != null
+                ? diseaseAnalysis.getLatestForFarm(farmId, user.getUid())
+                : Map.of();
+        return ResponseEntity.ok(ApiResponse.success(latest, "Latest disease analyses retrieved"));
     }
 
     /**

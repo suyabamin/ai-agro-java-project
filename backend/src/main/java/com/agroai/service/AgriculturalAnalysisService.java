@@ -255,16 +255,22 @@ public class AgriculturalAnalysisService {
             if (canonicalFieldId == null || canonicalFieldId.isBlank()) {
                 continue;
             }
-            CursorPage<Map<String, Object>> pageCanonical = repository.page("ai_analysis_results", farmId, canonicalFieldId, null, 1, Map.of(), null, null);
+            CursorPage<Map<String, Object>> pageCanonical = repository.page("ai_analysis_results", farmId, canonicalFieldId, null, 10, Map.of(), null, null);
             Map<String, Object> chosen = null;
             if (pageCanonical != null && !pageCanonical.items().isEmpty()) {
-                chosen = pageCanonical.items().get(0);
+                chosen = pageCanonical.items().stream()
+                        .filter(item -> !DiseaseAnalysisService.ANALYSIS_TYPE.equals(item.get("analysisType")))
+                        .findFirst()
+                        .orElse(null);
             }
             if (f.getLocalFieldId() != null && !f.getLocalFieldId().isBlank() && !f.getLocalFieldId().equals(canonicalFieldId)) {
-                CursorPage<Map<String, Object>> pageLocal = repository.page("ai_analysis_results", farmId, f.getLocalFieldId(), null, 1, Map.of(), null, null);
+                CursorPage<Map<String, Object>> pageLocal = repository.page("ai_analysis_results", farmId, f.getLocalFieldId(), null, 10, Map.of(), null, null);
                 if (pageLocal != null && !pageLocal.items().isEmpty()) {
-                    Map<String, Object> localItem = pageLocal.items().get(0);
-                    if (chosen == null || extractEpochMs(localItem) > extractEpochMs(chosen)) {
+                    Map<String, Object> localItem = pageLocal.items().stream()
+                            .filter(item -> !DiseaseAnalysisService.ANALYSIS_TYPE.equals(item.get("analysisType")))
+                            .findFirst()
+                            .orElse(null);
+                    if (localItem != null && (chosen == null || extractEpochMs(localItem) > extractEpochMs(chosen))) {
                         chosen = localItem;
                     }
                 }

@@ -231,9 +231,9 @@ class AgriculturalAnalysisServiceTest {
                 "status", "PENDING"
         );
 
-        when(repository.page(eq("ai_analysis_results"), eq("farm-1"), eq("farm-1--f-1"), isNull(), eq(1), anyMap(), isNull(), isNull()))
+        when(repository.page(eq("ai_analysis_results"), eq("farm-1"), eq("farm-1--f-1"), isNull(), anyInt(), anyMap(), isNull(), isNull()))
                 .thenReturn(new CursorPage<>(List.of(analysis1), null, false));
-        when(repository.page(eq("ai_analysis_results"), eq("farm-1"), eq("farm-1--f-2"), isNull(), eq(1), anyMap(), isNull(), isNull()))
+        when(repository.page(eq("ai_analysis_results"), eq("farm-1"), eq("farm-1--f-2"), isNull(), anyInt(), anyMap(), isNull(), isNull()))
                 .thenReturn(new CursorPage<>(List.of(analysis2), null, false));
 
         Map<String, Map<String, Object>> latest = farmService.getLatestForFarm("farm-1", "uid-1");
