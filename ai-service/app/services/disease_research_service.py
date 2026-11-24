@@ -1,0 +1,348 @@
+import re
+import threading
+import urllib.parse
+import urllib.robotparser
+from datetime import datetime, timezone
+from typing import Any
+
+from app.schemas.research import (
+    BengaliResearchReport,
+    DiseaseResearchRequest,
+    DiseaseResearchResponse,
+    ResearchSource,
+)
+from app.services.disease_detection_service import is_healthy_class
+
+_BROWSER_SEMAPHORE = threading.Semaphore(1)
+_PAGE_LOAD_TIMEOUT_SEC = 15
+_EXPLICIT_WAIT_SEC = 8
+_MAX_EXTRACT_PAGES = 2
+_LOW_CONFIDENCE_THRESHOLD = 60.0
+
+_BD_GOV_DOMAINS = (
+    "dae.gov.bd",
+    "bari.gov.bd",
+    "brri.gov.bd",
+    "bau.edu.bd",
+    "bsmrau.edu.bd",
+    "sau.edu.bd",
+    "barc.gov.bd",
+    "ais.gov.bd",
+)
+_INTL_AGRI_DOMAINS = (
+    "irri.org",
+    "fao.org",
+    "cabi.org",
+    "cabidigitallibrary.org",
+    "plantwiseplusknowledgebank.org",
+    "plantvillage.psu.edu",
+    "cipotato.org",
+)
+
+
+def format_readable_disease(raw: str) -> str:
+    return re.sub(r"\s+", " ", raw.replace("_", " ")).strip()
+
+
+def infer_crop_from_disease(disease_name: str, crop_name: str | None) -> str:
+    if crop_name and crop_name.strip():
+        return crop_name.strip()
+    parts = format_readable_disease(disease_name).split(" ")
+    return parts[0] if parts else "Crop"
+
+
+def classify_domain_tier(url: str) -> tuple[str, str]:
+    parsed = urllib.parse.urlparse(url)
+    domain = (parsed.netloc or "").lower().lstrip("www.")
+    if any(domain == d or domain.endswith("." + d) for d in _BD_GOV_DOMAINS):
+        return domain, "BANGLADESH_GOV_RESEARCH"
+    if any(domain == d or domain.endswith("." + d) for d in _INTL_AGRI_DOMAINS):
+        return domain, "INTERNATIONAL_AGRI"
+    if domain.endswith(".edu") or domain.endswith(".ac.uk") or ".edu." in domain or ".gov" in domain:
+        return domain, "ACADEMIC"
+    return domain, "GENERAL"
+
+
+def _tier_priority(tier: str) -> int:
+    return {
+        "BANGLADESH_GOV_RESEARCH": 0,
+        "INTERNATIONAL_AGRI": 1,
+        "ACADEMIC": 2,
+        "GENERAL": 3,
+    }.get(tier, 4)
+
+
+def build_google_queries(disease_name: str, crop_name: str | None) -> list[str]:
+    readable = format_readable_disease(disease_name)
+    crop = infer_crop_from_disease(disease_name, crop_name)
+    q1 = f"{readable} {crop} disease management DAE BARI BRRI FAO CABI"
+    q2 = f"{readable} symptoms control agricultural extension"
+    return [q1, q2]
+
+
+def _is_google_blocked(current_url: str, page_source: str) -> bool:
+    url_low = (current_url or "").lower()
+    body_low = (page_source or "").lower()
+    if "/sorry/" in url_low or "sorry/index" in url_low:
+        return True
+    if "unusual traffic" in body_low or "our systems have detected unusual traffic" in body_low:
+        return True
+    if 'id="captcha-form"' in body_low or "g-recaptcha" in body_low:
+        return True
+    return False
+
+
+def _is_valid_external_url(url: str | None) -> bool:
+    if not url:
+        return False
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.netloc or "").lower()
+    if not host or "google." in host or "gstatic." in host or "youtube." in host:
+        return False
+    return True
+
+
+def _robots_allows(url: str, user_agent: str = "AgroAIResearchBot") -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+        rp = urllib.robotparser.RobotFileParser()
+        rp.set_url(robots_url)
+        rp.read()
+        return rp.can_fetch(user_agent, url)
+    except Exception:
+        # Fail-safe: if robots.txt cannot be fetched/parsed, skip deep page scraping and rely on snippet only.
+        return False
+
+
+def _build_chrome_driver() -> tuple[Any, str, str]:
+    import selenium
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+
+    opts = Options()
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
+    opts.add_argument("--disable-gpu")
+    opts.add_argument("--window-size=1280,900")
+    # Never expose remote debugging ports or use stealth/proxy flags.
+
+    driver = webdriver.Chrome(options=opts)
+    driver.set_page_load_timeout(_PAGE_LOAD_TIMEOUT_SEC)
+    browser_ver = driver.capabilities.get("browserVersion", "chrome")
+    return driver, f"selenium@{selenium.__version__}", f"chrome@{browser_ver}"
+
+
+def _run_selenium_google_search(queries: list[str], max_results: int) -> tuple[str, list[ResearchSource], str | None, str | None, str | None]:
+    """
+    Executes bounded headless Chrome Google Search via Selenium WebDriver.
+    Returns (status, sources, error_code, selenium_version, browser_info).
+    """
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    if not _BROWSER_SEMAPHORE.acquire(timeout=20):
+        return "FAILED", [], "BROWSER_BUSY", None, None
+
+    driver = None
+    sel_ver = None
+    browser_info = None
+    try:
+        driver, sel_ver, browser_info = _build_chrome_driver()
+        collected: dict[str, ResearchSource] = {}
+
+        for query in queries[:2]:
+            encoded_q = urllib.parse.quote_plus(query)
+            driver.get(f"https://www.google.com/search?q={encoded_q}&hl=en&num=8")
+            WebDriverWait(driver, _EXPLICIT_WAIT_SEC).until(
+                lambda d: d.execute_script("return document.readyState") == "complete"
+            )
+
+            if _is_google_blocked(driver.current_url, driver.page_source):
+                return (
+                    "BLOCKED",
+                    [],
+                    "GOOGLE_CAPTCHA_BLOCKED",
+                    sel_ver,
+                    browser_info,
+                )
+
+            anchors = driver.find_elements(By.CSS_SELECTOR, "a h3")
+            for h3 in anchors:
+                try:
+                    title = h3.text.strip()
+                    link_el = h3.find_element(By.XPATH, "./ancestor::a[1]")
+                    href = link_el.get_attribute("href")
+                    if not title or not _is_valid_external_url(href):
+                        continue
+                    norm_url = href.split("#")[0]
+                    if norm_url in collected:
+                        continue
+
+                    snippet = ""
+                    try:
+                        container = link_el.find_element(By.XPATH, "./ancestor::div[contains(@class,'g') or @data-snhf or @data-hveid][1]")
+                        raw_txt = container.text.replace(title, "").strip()
+                        snippet = re.sub(r"\s+", " ", raw_txt)[:360]
+                    except Exception:
+                        snippet = ""
+
+                    domain, tier = classify_domain_tier(norm_url)
+                    collected[norm_url] = ResearchSource(
+                        title=title[:180],
+                        url=norm_url,
+                        domain=domain,
+                        snippet=snippet or title,
+                        extractedSummary=None,
+                        authoritativeTier=tier,
+                        retrievedAt=datetime.now(timezone.utc).isoformat(),
+                    )
+                except Exception:
+                    continue
+
+            if len(collected) >= max_results:
+                break
+
+        if not collected:
+            return "FAILED", [], "NO_SEARCH_RESULTS", sel_ver, browser_info
+
+        sorted_sources = sorted(
+            collected.values(),
+            key=lambda s: (_tier_priority(s.authoritativeTier), s.title.lower()),
+        )[:max_results]
+
+        # Open up to _MAX_EXTRACT_PAGES permitted pages respecting robots.txt
+        extracted_count = 0
+        for src in sorted_sources:
+            if extracted_count >= _MAX_EXTRACT_PAGES:
+                break
+            if not _robots_allows(src.url):
+                continue
+            try:
+                driver.get(src.url)
+                WebDriverWait(driver, _EXPLICIT_WAIT_SEC).until(
+                    lambda d: d.execute_script("return document.readyState") == "complete"
+                )
+                paragraphs = driver.find_elements(By.CSS_SELECTOR, "main p, article p, p")
+                text_parts = [p.text.strip() for p in paragraphs[:6] if len(p.text.strip()) > 40]
+                if text_parts:
+                    src.extractedSummary = re.sub(r"\s+", " ", " ".join(text_parts))[:600]
+                    extracted_count += 1
+            except Exception:
+                continue
+
+        return "COMPLETED", sorted_sources, None, sel_ver, browser_info
+    except Exception as exc:
+        return "FAILED", [], f"SELENIUM_ERROR:{type(exc).__name__}", sel_ver, browser_info
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        _BROWSER_SEMAPHORE.release()
+
+
+def build_bengali_report(
+    disease_name: str,
+    crop_name: str,
+    confidence: float | None,
+    is_healthy: bool,
+    sources: list[ResearchSource],
+) -> BengaliResearchReport:
+    readable = format_readable_disease(disease_name)
+    low_conf = confidence is not None and confidence < _LOW_CONFIDENCE_THRESHOLD
+
+    if is_healthy:
+        return BengaliResearchReport(
+            summaryBn=f"{crop_name} ফসলের নমুনাটি সুস্থ হিসেবে চিহ্নিত হয়েছে ({readable})। এই মুহূর্তে কোনো রোগের চিকিৎসার প্রয়োজন নেই।",
+            symptomsBn="সক্রিয় রোগের কোনো লক্ষণ শনাক্ত হয়নি।",
+            managementBn="নিয়মিত সেচ, সুষম সার এবং জমি পরিচ্ছন্ন রাখুন।",
+            preventionBn="আগাম সতর্কতার জন্য সপ্তাহে অন্তত একবার জমির পাতা পর্যবেক্ষণ করুন।",
+            cautionBn="এই ফলাফলটি AI-ভিত্তিক প্রাথমিক মূল্যায়ন মাত্র; সন্দেহ হলে কৃষি কর্মকর্তার পরামর্শ নিন।",
+            evidenceNoticeBn="সুস্থ শ্রেণি হওয়ায় কোনো রাসায়নিক বা রোগ ব্যবস্থাপনা সুপারিশ করা হয়নি।",
+        )
+
+    evidence_lines = []
+    for i, s in enumerate(sources[:3], start=1):
+        detail = s.extractedSummary or s.snippet
+        evidence_lines.append(f"[{i}] {s.domain}: {detail[:220]}")
+    joined_evidence = " | ".join(evidence_lines) if evidence_lines else "যাচাইকৃত বিস্তারিত তথ্য সীমিত।"
+
+    conf_note = (
+        f" সতর্কতা: মডেলের আত্মবিশ্বাসের হার কম ({confidence:.1f}%) — মাঠে যাচাই জরুরি।"
+        if low_conf and confidence is not None
+        else ""
+    )
+
+    return BengaliResearchReport(
+        summaryBn=f"{crop_name} ফসলে '{readable}' সংক্রান্ত প্রাথমিক তথ্য {len(sources)}টি উৎস থেকে সংগ্রহ করা হয়েছে।{conf_note}",
+        symptomsBn=f"সংগৃহীত উৎসের প্রাথমিক তথ্য: {joined_evidence}",
+        managementBn="সঠিক মাত্রা ও করণীয় নির্ধারণে স্থানীয় কৃষি সম্প্রসারণ অধিদপ্তর (DAE) বা BARI/BRRI-এর অনুমোদিত নির্দেশিকা অনুসরণ করুন। উৎস লিংকগুলো থেকে বিস্তারিত দেখুন।",
+        preventionBn="আক্রান্ত পাতা আলাদা করা, সুষম সেচ ও বায়ু চলাচল বজায় রাখা এবং রোগমুক্ত বীজ/চারা ব্যবহার সাধারণ প্রতিরোধমূলক ব্যবস্থা হিসেবে বিবেচিত।",
+        cautionBn="অনলাইন অনুসন্ধান থেকে পাওয়া তথ্য প্রাথমিক সহায়তা মাত্র; যাচাইকৃত কৃষিবিদের পরামর্শ ছাড়া কোনো কীটনাশক বা মাত্রা প্রয়োগ করবেন না।",
+        evidenceNoticeBn="এই প্রতিবেদনে কোনো অনুমানভিত্তিক রাসায়নিক মাত্রা বা ব্র্যান্ড যোগ করা হয়নি; সব তথ্য নিচে তালিকাভুক্ত উৎস থেকে সংগৃহীত।",
+    )
+
+
+def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse:
+    crop = infer_crop_from_disease(req.diseaseName, req.cropName)
+    healthy = req.isHealthy if req.isHealthy is not None else is_healthy_class(req.diseaseName)
+    low_conf = req.confidence is not None and req.confidence < _LOW_CONFIDENCE_THRESHOLD
+
+    if healthy:
+        report = build_bengali_report(req.diseaseName, crop, req.confidence, True, [])
+        return DiseaseResearchResponse(
+            researchStatus="SKIPPED_HEALTHY",
+            analysisId=req.analysisId,
+            diseaseName=req.diseaseName,
+            cropName=crop,
+            isHealthy=True,
+            lowConfidenceWarning=low_conf,
+            queriesUsed=[],
+            sources=[],
+            bengaliReport=report,
+        )
+
+    queries = build_google_queries(req.diseaseName, crop)
+    status, sources, err_code, sel_ver, browser_info = _run_selenium_google_search(queries, req.maxResults)
+
+    if status != "COMPLETED":
+        msg = (
+            "Google Search blocked automated access (CAPTCHA/rate check). Disease prediction remains valid; retry later."
+            if status == "BLOCKED"
+            else "Selenium Google Search could not collect verified agricultural sources."
+        )
+        return DiseaseResearchResponse(
+            researchStatus=status,
+            analysisId=req.analysisId,
+            diseaseName=req.diseaseName,
+            cropName=crop,
+            isHealthy=False,
+            lowConfidenceWarning=low_conf,
+            queriesUsed=queries,
+            sources=[],
+            bengaliReport=None,
+            errorCode=err_code,
+            errorMessage=msg,
+            seleniumVersion=sel_ver,
+            browserInfo=browser_info,
+        )
+
+    report = build_bengali_report(req.diseaseName, crop, req.confidence, False, sources)
+    return DiseaseResearchResponse(
+        researchStatus="COMPLETED",
+        analysisId=req.analysisId,
+        diseaseName=req.diseaseName,
+        cropName=crop,
+        isHealthy=False,
+        lowConfidenceWarning=low_conf,
+        queriesUsed=queries,
+        sources=sources,
+        bengaliReport=report,
+        seleniumVersion=sel_ver,
+        browserInfo=browser_info,
+    )
