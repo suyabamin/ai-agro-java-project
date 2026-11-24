@@ -27,7 +27,7 @@ describe('monitoringService', () => {
   it('requests disease analysis by image ID without inventing a result client side', async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { success: true, data: { status: 'MODEL_UNAVAILABLE' } } });
     const response = await monitoringService.analyzeDisease('farm-1', 'field-1', 'image-1');
-    expect(apiClient.post).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/disease-analyses', null, { params: { imageId: 'image-1' } });
+    expect(apiClient.post).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/disease-analyses', null, { params: { imageId: 'image-1' }, timeout: 35000 });
     expect(response.data?.status).toBe('MODEL_UNAVAILABLE');
   });
 

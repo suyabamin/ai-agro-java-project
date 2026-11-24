@@ -38,13 +38,19 @@ export const monitoringService = {
   },
   async uploadImage(farmId: string, fieldId: string, file: File) {
     const form = new FormData(); form.append('file', file);
-    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/images`, form, { headers: { 'Content-Type': 'multipart/form-data' } })).data;
+    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/images`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 30000,
+    })).data;
   },
   async deleteImage(farmId: string, fieldId: string, imageId: string) {
     return (await apiClient.delete<ApiResponse<void>>(`${root(farmId, fieldId)}/images/${encodeURIComponent(imageId)}`)).data;
   },
   async analyzeDisease(farmId: string, fieldId: string, imageId: string) {
-    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/disease-analyses`, null, { params: { imageId } })).data;
+    return (await apiClient.post<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/disease-analyses`, null, {
+      params: { imageId },
+      timeout: 35000,
+    })).data;
   },
   async diseaseAvailability(farmId: string, fieldId: string) {
     return (await apiClient.get<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/disease-availability`)).data;
