@@ -1,0 +1,15 @@
+cd D:\agro-ai-java-project\ai-service
+.\.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+
+
+cd D:\agro-ai-java-project\backend
+$env:JAVA_HOME = 'C:\Program Files\Eclipse Adoptium\jdk-21.0.13.9-hotspot'
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+.\mvnw.cmd spring-boot:run
+
+
+
+
+cd D:\agro-ai-java-project\frontend
+npm run dev
