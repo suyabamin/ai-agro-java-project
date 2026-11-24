@@ -26,4 +26,10 @@ class MonitoringStorageConfigurationTest {
         runner.withPropertyValues("spring.profiles.active=dev")
                 .run(context -> assertThat(context).doesNotHaveBean(ImageStorage.class));
     }
+
+    @Test
+    void gcsProviderFailsClosedWhenBucketNameIsMissing() {
+        runner.withPropertyValues("spring.profiles.active=prod", "agroai.storage.provider=gcs")
+                .run(context -> assertThat(context).hasFailed());
+    }
 }
