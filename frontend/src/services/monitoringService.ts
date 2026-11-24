@@ -19,6 +19,9 @@ export const monitoringService = {
   async latestFarmAgriculturalAnalyses(farmId: string) {
     return (await apiClient.get<ApiResponse<Record<string, MonitoringRecord>>>(`${farmRoot(farmId)}/agricultural-analyses/latest`)).data;
   },
+  async latestFarmDiseaseAnalyses(farmId: string) {
+    return (await apiClient.get<ApiResponse<Record<string, MonitoringRecord>>>(`${farmRoot(farmId)}/disease-analyses/latest`)).data;
+  },
   async latestFarmTelemetry(farmId: string) {
     return (await apiClient.get<ApiResponse<Record<string, MonitoringRecord[]>>>(`${farmRoot(farmId)}/telemetry/latest`)).data;
   },

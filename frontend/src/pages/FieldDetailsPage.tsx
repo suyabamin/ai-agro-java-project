@@ -13,6 +13,7 @@ import type { Field } from '../types/field';
 import type { FieldAssignment } from '../types/assignment';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
+import { DiseaseDetectionCard, formatDiseaseLabel, parseConfidencePercent } from '../components/monitoring/DiseaseDetectionCard';
 import {
   buildFieldDecisionRow,
   extractTelemetry8Parameters,
@@ -38,6 +39,8 @@ export const FieldDetailsPage: React.FC = () => {
   const [telemetryReadings, setTelemetryReadings] = useState<MonitoringRecord[]>([]);
   const [latestAnalysis, setLatestAnalysis] = useState<MonitoringRecord | null>(null);
   const [historicalAnalyses, setHistoricalAnalyses] = useState<MonitoringRecord[]>([]);
+  const [latestDiseaseAnalysis, setLatestDiseaseAnalysis] = useState<MonitoringRecord | null>(null);
+  const [diseaseAnalyses, setDiseaseAnalyses] = useState<MonitoringRecord[]>([]);
   const [selectedAnalysisDetail, setSelectedAnalysisDetail] = useState<MonitoringRecord | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
@@ -142,11 +145,14 @@ export const FieldDetailsPage: React.FC = () => {
 
     setLoadingAi(true);
     try {
-      const [telemetryResp, agriResp, availabilityResp, imagesResp, plansResp, historyResp] =
+      const [telemetryResp, agriResp, diseaseResp, availabilityResp, imagesResp, plansResp, historyResp] =
         await Promise.all([
           monitoringService.telemetry(activeFarm.farmId, fieldId).catch(() => ({ data: [] })),
           monitoringService
             .listAgriculturalAnalyses(activeFarm.farmId, fieldId, null, 10)
+            .catch(() => ({ data: { items: [], nextCursor: null, hasNext: false, pageSize: 10 } })),
+          monitoringService
+            .analyses(activeFarm.farmId, fieldId, null, 10)
             .catch(() => ({ data: { items: [], nextCursor: null, hasNext: false, pageSize: 10 } })),
           monitoringService
             .diseaseAvailability(activeFarm.farmId, fieldId)
@@ -171,6 +177,10 @@ export const FieldDetailsPage: React.FC = () => {
       } else {
         setLatestAnalysis(null);
       }
+
+      const diseaseList = diseaseResp.data?.items || [];
+      setDiseaseAnalyses(diseaseList);
+      setLatestDiseaseAnalysis(diseaseList.length > 0 ? diseaseList[0] : null);
 
       setModelAvailability(availabilityResp.data || null);
       setImagesList(imagesResp.data?.items || []);
@@ -750,33 +760,94 @@ export const FieldDetailsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Card 4: Disease Diagnostic (Fail-Closed MODEL_UNAVAILABLE) */}
+          {/* Card 4: Disease Diagnostic (Persisted TFLite Result / Fail-Closed) */}
           <div className="bg-surface-container-lowest rounded-2xl p-5 border border-outline-variant/30 shadow-sm relative overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex items-center justify-between mb-3">
               <span className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant">
                 Disease Diagnostic
               </span>
-              <div className="w-8 h-8 rounded-full bg-neutral-100 text-neutral-600 flex items-center justify-center border border-neutral-300">
+              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
                 <span className="material-symbols-outlined text-[18px]">health_and_safety</span>
               </div>
             </div>
 
-            <div className="my-2">
-              <div className="text-base font-extrabold text-on-surface tracking-tight truncate">
-                {decisionModel?.diseaseStatus || 'MODEL_UNAVAILABLE'}
-              </div>
-              <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
-                Production model unavailable. No unverified diagnosis fabricated.
-              </p>
-            </div>
+            {(() => {
+              const dStatus = String(latestDiseaseAnalysis?.status || '').toUpperCase();
+              const dName = latestDiseaseAnalysis?.diseaseName || latestDiseaseAnalysis?.predictedClass;
+              const dConf = parseConfidencePercent(latestDiseaseAnalysis);
+              const dHealthy = typeof latestDiseaseAnalysis?.isHealthy === 'boolean' ? latestDiseaseAnalysis.isHealthy : null;
+              return (
+                <>
+                  <div className="my-2">
+                    <div className="text-base font-extrabold text-on-surface tracking-tight truncate">
+                      {dStatus === 'COMPLETED' && dName
+                        ? formatDiseaseLabel(String(dName))
+                        : dStatus || String(modelAvailability?.status || 'NO SCAN YET')}
+                    </div>
+                    <p className="text-[11px] text-on-surface-variant mt-1 leading-snug">
+                      {dStatus === 'COMPLETED' && dConf !== null
+                        ? `${dHealthy === true ? 'Healthy' : dHealthy === false ? 'Disease Detected' : 'Result'} • ${dConf.toFixed(1)}% confidence`
+                        : dStatus === 'FAILED' || dStatus === 'MODEL_UNAVAILABLE'
+                          ? String(latestDiseaseAnalysis?.errorMessage || 'Disease inference unavailable.')
+                          : 'Upload a crop leaf image to run TFLite disease detection.'}
+                    </p>
+                  </div>
 
-            <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
-              <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 border border-neutral-300">
-                FAIL-CLOSED
-              </span>
-              <span className="text-[10px] text-on-surface-variant font-mono">CNN v1.0</span>
-            </div>
+                  <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-surface-container text-on-surface border border-outline-variant/30">
+                      {dStatus === 'COMPLETED'
+                        ? dHealthy === true ? 'HEALTHY' : 'DISEASE DETECTED'
+                        : dStatus || 'AWAITING SCAN'}
+                    </span>
+                    <span className="text-[10px] text-on-surface-variant font-mono">
+                      {latestDiseaseAnalysis?.modelVersion ? String(latestDiseaseAnalysis.modelVersion) : 'TFLite 94-Class'}
+                    </span>
+                  </div>
+                </>
+              );
+            })()}
           </div>
+        </div>
+
+        {/* 5B. LATEST PERSISTED CROP LEAF DISEASE SCAN & HISTORY */}
+        <div className="space-y-4">
+          <DiseaseDetectionCard
+            analysis={latestDiseaseAnalysis}
+            title="Latest Persisted Leaf Disease Scan (Shared with Farmer)"
+          />
+          {diseaseAnalyses.length > 1 && (
+            <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/30 space-y-2">
+              <h4 className="text-xs font-bold text-on-surface uppercase tracking-wider">
+                Disease Scan History ({diseaseAnalyses.length})
+              </h4>
+              <div className="divide-y divide-outline-variant/15">
+                {diseaseAnalyses.map((item, idx) => {
+                  const conf = parseConfidencePercent(item);
+                  const dName = item.diseaseName || item.predictedClass;
+                  return (
+                    <div key={String(item.analysisId || item.id || idx)} className="py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] text-on-surface-variant">
+                          {String(item.analysisId || item.id || '').substring(0, 18)}...
+                        </span>
+                        <StatusBadge status={String(item.status || 'UNKNOWN')} />
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-semibold text-on-surface">
+                          {item.status === 'COMPLETED' && dName
+                            ? `${formatDiseaseLabel(String(dName))}${conf !== null ? ` (${conf.toFixed(1)}%)` : ''}`
+                            : String(item.errorMessage || item.status)}
+                        </span>
+                        <span className="text-[11px] text-on-surface-variant">
+                          {item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : ''}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 5. ANALYSIS PROVENANCE METADATA BAR */}

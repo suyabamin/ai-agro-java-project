@@ -42,9 +42,34 @@ export interface FarmAggregatedTelemetry {
  * Builds an independent, isolated View Model for a field and its optional AI analysis record.
  * Guarantees that evaluation data belongs strictly to the canonical fieldId.
  */
-export function buildFieldDecisionRow(field: Field, analysis?: MonitoringRecord): FieldAiDecisionViewModel {
+export function buildFieldDecisionRow(
+  field: Field,
+  analysis?: MonitoringRecord,
+  diseaseAnalysis?: MonitoringRecord
+): FieldAiDecisionViewModel {
   const canonicalFieldId = field.fieldId;
   const decisionUrl = `/dashboard/fields/${encodeURIComponent(canonicalFieldId)}`;
+
+  const formatDiseaseSummary = (rec?: MonitoringRecord): string => {
+    if (!rec) return 'N/A';
+    const st = String(rec.status || '').toUpperCase();
+    if (st === 'PENDING' || st === 'PROCESSING' || st === 'FAILED' || st === 'MODEL_UNAVAILABLE') {
+      return st;
+    }
+    if (st === 'COMPLETED') {
+      const rawName = rec.diseaseName || rec.predictedClass;
+      const name = rawName ? String(rawName).replace(/_/g, ' ') : null;
+      const conf =
+        typeof rec.confidence === 'number'
+          ? `${rec.confidence.toFixed(1)}%`
+          : typeof rec.confidenceScore === 'number'
+            ? `${(rec.confidenceScore * 100).toFixed(1)}%`
+            : null;
+      if (name && conf) return `${name} (${conf})`;
+      if (name) return name;
+    }
+    return 'N/A';
+  };
 
   if (!analysis) {
     return {
@@ -57,7 +82,7 @@ export function buildFieldDecisionRow(field: Field, analysis?: MonitoringRecord)
       fieldStatus: null,
       fieldStatusBadge: 'none',
       recommendedCrop: null,
-      diseaseStatus: 'N/A',
+      diseaseStatus: formatDiseaseSummary(diseaseAnalysis),
       evaluatedAt: null,
       formattedDate: 'No evaluation yet',
       decisionUrl,
@@ -199,7 +224,9 @@ export function buildFieldDecisionRow(field: Field, analysis?: MonitoringRecord)
     fieldStatus: fs,
     fieldStatusBadge: fsBadge,
     recommendedCrop: recCrop,
-    diseaseStatus: String(analysis.diseaseDetectionStatus || 'MODEL_UNAVAILABLE'),
+    diseaseStatus: diseaseAnalysis
+      ? formatDiseaseSummary(diseaseAnalysis)
+      : String(analysis.diseaseDetectionStatus || 'No scan yet'),
     evaluatedAt: dateStr,
     formattedDate,
     decisionUrl,

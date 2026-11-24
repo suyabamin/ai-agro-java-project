@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useFarm } from '../context/FarmContext';
+import { useLanguage } from '../context/LanguageContext';
 import { fieldService } from '../services/fieldService';
 import { monitoringService, type MonitoringRecord } from '../services/monitoringService';
 import type { Field } from '../types/field';
@@ -20,10 +21,12 @@ import {
 export const DashboardPage: React.FC = () => {
   const { perspective } = useAuth();
   const { activeFarm, loading: farmLoading } = useFarm();
+  const { t, formatNumber } = useLanguage();
   const navigate = useNavigate();
 
   const [fields, setFields] = useState<Field[]>([]);
   const [fieldAnalyses, setFieldAnalyses] = useState<Record<string, MonitoringRecord>>({});
+  const [fieldDiseaseMap, setFieldDiseaseMap] = useState<Record<string, MonitoringRecord>>({});
   const [fieldTelemetryMap, setFieldTelemetryMap] = useState<Record<string, MonitoringRecord[]>>({});
   const [selectedTelemetrySector, setSelectedTelemetrySector] = useState<string>('ALL');
   const [loading, setLoading] = useState(true);
@@ -41,6 +44,7 @@ export const DashboardPage: React.FC = () => {
       if (!activeFarm) {
         setFields([]);
         setFieldAnalyses({});
+        setFieldDiseaseMap({});
         setFieldTelemetryMap({});
         setLoading(false);
         return;
@@ -55,20 +59,25 @@ export const DashboardPage: React.FC = () => {
           setFields(fieldsList);
         }
 
-        // Fetch latest agricultural analyses and telemetry for ALL fields
+        // Fetch latest agricultural analyses, disease analyses, and telemetry for ALL fields
         if (fieldsList.length > 0) {
           const analysesMap: Record<string, MonitoringRecord> = {};
+          const diseaseMap: Record<string, MonitoringRecord> = {};
           const telMap: Record<string, MonitoringRecord[]> = {};
 
           // 1. Efficient farm-level batch retrieval (avoids N+1 roundtrips)
           try {
-            const [batchAnalysesRes, batchTelemetryRes] = await Promise.allSettled([
+            const [batchAnalysesRes, batchDiseaseRes, batchTelemetryRes] = await Promise.allSettled([
               monitoringService.latestFarmAgriculturalAnalyses(activeFarm.farmId),
+              monitoringService.latestFarmDiseaseAnalyses(activeFarm.farmId),
               monitoringService.latestFarmTelemetry(activeFarm.farmId),
             ]);
 
             if (batchAnalysesRes.status === 'fulfilled' && batchAnalysesRes.value?.data) {
               Object.assign(analysesMap, batchAnalysesRes.value.data);
+            }
+            if (batchDiseaseRes.status === 'fulfilled' && batchDiseaseRes.value?.data) {
+              Object.assign(diseaseMap, batchDiseaseRes.value.data);
             }
             if (batchTelemetryRes.status === 'fulfilled' && batchTelemetryRes.value?.data) {
               Object.assign(telMap, batchTelemetryRes.value.data);
@@ -110,6 +119,7 @@ export const DashboardPage: React.FC = () => {
 
           if (mounted) {
             setFieldAnalyses(analysesMap);
+            setFieldDiseaseMap(diseaseMap);
             setFieldTelemetryMap(telMap);
           }
         }
@@ -212,47 +222,45 @@ export const DashboardPage: React.FC = () => {
     <div className="space-y-8 max-w-[1600px] mx-auto">
       {/* Top Banner / Welcome Ribbon */}
       <div className="bg-surface-container-lowest rounded-2xl p-6 sm:p-8 shadow-sm border border-outline-variant/30 flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-primary via-secondary to-tertiary-fixed-dim" />
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold uppercase tracking-wider">
-              {activeFarm.myRole} WORKSPACE
+            <span className="px-2 py-0.5 rounded-md bg-secondary-container text-on-secondary-container text-xs font-medium capitalize">
+              {t('dashboard.ownerWorkspace', { role: activeFarm.myRole?.toLowerCase() || t('badge.owner') })}
             </span>
             <span className="text-on-surface-variant text-xs">
               {activeFarm.district}, {activeFarm.division}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-on-surface tracking-tight">
+          <h1 className="text-2xl font-semibold text-on-surface tracking-tight">
             {activeFarm.name}
           </h1>
           <p className="text-sm text-on-surface-variant mt-1 max-w-2xl leading-relaxed">
-            {activeFarm.description ||
-              'High-yield precision agriculture operations console. Telemetry mesh connected.'}
+            {activeFarm.description || t('dashboard.defaultDescription')}
           </p>
         </div>
 
         {/* Quick Action Buttons */}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Link
             to="/dashboard/fields/new"
-            className="h-10 px-4 rounded-xl bg-primary hover:bg-secondary text-on-primary font-bold text-xs shadow-sm transition-all flex items-center gap-2 no-underline active:scale-95"
+            className="h-9 px-3.5 rounded-lg bg-primary hover:bg-secondary text-on-primary font-medium text-xs shadow-sm transition-colors flex items-center gap-1.5 no-underline"
           >
-            <span className="material-symbols-outlined text-[18px]">add_location_alt</span>
-            <span>Add Field</span>
+            <span className="material-symbols-outlined text-[16px]">add_location_alt</span>
+            <span>{t('dashboard.addField')}</span>
           </Link>
           <Link
             to="/dashboard/jobs/new"
-            className="h-10 px-4 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-bold text-xs border border-outline-variant/40 transition-colors flex items-center gap-2 no-underline"
+            className="h-9 px-3.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-xs border border-outline-variant/50 transition-colors flex items-center gap-1.5 no-underline"
           >
-            <span className="material-symbols-outlined text-[18px] text-primary">post_add</span>
-            <span>Post Vacancy</span>
+            <span className="material-symbols-outlined text-[16px] text-primary">post_add</span>
+            <span>{t('dashboard.postVacancy')}</span>
           </Link>
           <Link
             to="/dashboard/payments/new"
-            className="h-10 px-4 rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface font-bold text-xs border border-outline-variant/40 transition-colors flex items-center gap-2 no-underline"
+            className="h-9 px-3.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-xs border border-outline-variant/50 transition-colors flex items-center gap-1.5 no-underline"
           >
-            <span className="material-symbols-outlined text-[18px] text-secondary">payments</span>
-            <span>Record Payment</span>
+            <span className="material-symbols-outlined text-[16px] text-secondary">payments</span>
+            <span>{t('dashboard.recordPayment')}</span>
           </Link>
         </div>
       </div>
@@ -267,43 +275,43 @@ export const DashboardPage: React.FC = () => {
       {/* 4 Core Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          title="Active Fields"
-          value={activeFieldsCount}
-          subtitle={`${uniqueFields.length} total plots mapped`}
+          title={t('dashboard.statTotalFields')}
+          value={formatNumber(activeFieldsCount)}
+          subtitle={`${formatNumber(uniqueFields.length)} ${t('dashboard.activePlots', { count: uniqueFields.length })}`}
           icon="crop_free"
-          badgeText="Operational"
+          badgeText={t('badge.active')}
           accentColor="primary"
         />
         <StatCard
-          title="Cultivated Area"
-          value={`${totalArea.toFixed(1)} ha`}
-          subtitle={`Farm boundary: ${activeFarm.totalAreaHectares || 0} ha`}
+          title={t('dashboard.statTotalArea')}
+          value={`${formatNumber(totalArea.toFixed(1))} ha`}
+          subtitle={`Farm boundary: ${formatNumber(activeFarm.totalAreaHectares || 0)} ha`}
           icon="square_foot"
-          badgeText="Active"
+          badgeText={t('badge.active')}
           accentColor="secondary"
         />
         <StatCard
-          title="Telemetry Nodes"
+          title={t('dashboard.statTelemetryLink')}
           value={
             aggregatedTelemetry.totalReadings > 0
-              ? `${aggregatedTelemetry.totalReadings} Packets`
-              : `${uniqueFields.length * 8} Sensor Slots`
+              ? `${formatNumber(aggregatedTelemetry.totalReadings)} Packets`
+              : `${formatNumber(uniqueFields.length * 8)} Sensor Slots`
           }
           subtitle={
             aggregatedTelemetry.totalReadings > 0
-              ? `${aggregatedTelemetry.activeSectorsReporting} of ${uniqueFields.length} sectors active`
-              : 'Mesh awaiting telemetry'
+              ? `${formatNumber(aggregatedTelemetry.activeSectorsReporting)} of ${formatNumber(uniqueFields.length)} sectors active`
+              : t('dashboard.awaitingFields')
           }
           icon="sensors"
-          badgeText={aggregatedTelemetry.totalReadings > 0 ? 'Online' : 'Standby'}
+          badgeText={aggregatedTelemetry.totalReadings > 0 ? t('badge.online') : t('dashboard.standby')}
           accentColor="primary"
         />
         <StatCard
-          title="Farm Visibility"
-          value={activeFarm.visibility}
-          subtitle="Public marketplace status"
+          title={t('dashboard.statGovernanceRole')}
+          value={activeFarm.visibility === 'PUBLIC' ? t('farm.public') : t('farm.private')}
+          subtitle={t('common.status')}
           icon="visibility"
-          badgeText={activeFarm.visibility === 'PUBLIC' ? 'Listed' : 'Private'}
+          badgeText={activeFarm.visibility === 'PUBLIC' ? t('farm.public') : t('farm.private')}
           badgePositive={activeFarm.visibility === 'PUBLIC'}
           accentColor="tertiary"
         />
@@ -315,94 +323,94 @@ export const DashboardPage: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="material-symbols-outlined text-primary text-[24px]">psychiatry</span>
-              <h2 className="text-lg sm:text-xl font-bold text-on-surface">Farm AI Insights</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-on-surface">{t('dashboard.aiInsightsTitle')}</h2>
             </div>
             <p className="text-xs text-on-surface-variant">
-              Persisted agronomic intelligence, water requirements, and field condition evaluations across all farm sectors. Shared canonically with assigned farmers.
+              {t('dashboard.aiInsightsSubtitle')}
             </p>
           </div>
           <Link
             to="/dashboard/ai"
-            className="h-9 px-4 rounded-xl bg-primary hover:bg-secondary text-on-primary font-bold text-xs flex items-center gap-1.5 no-underline shadow-sm transition-all self-start sm:self-auto"
+            className="h-9 px-3.5 rounded-lg bg-primary hover:bg-secondary text-on-primary font-medium text-xs flex items-center gap-1.5 no-underline shadow-sm transition-colors self-start sm:self-auto"
           >
             <span className="material-symbols-outlined text-[16px]">analytics</span>
-            <span>AI Diagnostics Center</span>
+            <span>{t('dashboard.aiCenterButton')}</span>
           </Link>
         </div>
 
         {/* AI Metric Summary Strip (Calculated dynamically from real persisted records) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Total Fields</span>
-            <span className="text-xl font-extrabold text-on-surface mt-1 block">{metrics.totalFields}</span>
+            <span className="text-xs font-medium text-on-surface-variant block">{t('dashboard.totalFields')}</span>
+            <span className="text-2xl font-semibold text-on-surface mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.totalFields)}</span>
           </div>
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-primary block">Completed</span>
-            <span className="text-xl font-extrabold text-primary mt-1 block">{metrics.completed}</span>
+            <span className="text-xs font-medium text-primary block">{t('dashboard.completed')}</span>
+            <span className="text-2xl font-semibold text-primary mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.completed)}</span>
           </div>
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-amber-600 block">Needs Attention</span>
-            <span className="text-xl font-extrabold text-amber-600 mt-1 block">{metrics.needingAttention}</span>
+            <span className="text-xs font-medium text-amber-700 block">{t('dashboard.needingAttention')}</span>
+            <span className="text-2xl font-semibold text-amber-700 mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.needingAttention)}</span>
           </div>
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-error block">Critical / Urgent</span>
-            <span className="text-xl font-extrabold text-error mt-1 block">{metrics.critical}</span>
+            <span className="text-xs font-medium text-error block">{t('dashboard.critical')}</span>
+            <span className="text-2xl font-semibold text-error mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.critical)}</span>
           </div>
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-secondary block">Pending</span>
-            <span className="text-xl font-extrabold text-secondary mt-1 block">{metrics.pending}</span>
+            <span className="text-xs font-medium text-secondary block">{t('dashboard.pending')}</span>
+            <span className="text-2xl font-semibold text-secondary mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.pending)}</span>
           </div>
           <div className="p-3.5 rounded-xl bg-surface-container-low border border-outline-variant/30 text-center">
-            <span className="text-[10px] font-bold uppercase text-on-surface-variant block">Failed</span>
-            <span className="text-xl font-extrabold text-on-surface-variant mt-1 block">{metrics.failed}</span>
+            <span className="text-xs font-medium text-on-surface-variant block">{t('dashboard.failed')}</span>
+            <span className="text-2xl font-semibold text-on-surface-variant mt-0.5 block tabular-nums font-mono">{formatNumber(metrics.failed)}</span>
           </div>
         </div>
 
         {/* Field-wise AI Decision Table (Dynamically renders exactly N rows for N active fields) */}
         <div className="overflow-x-auto rounded-xl border border-outline-variant/30">
           <table className="w-full text-left text-xs">
-            <thead className="bg-surface-container-low text-on-surface uppercase text-[10px] font-bold tracking-wider border-b border-outline-variant/30">
+            <thead className="bg-surface-container-low text-on-surface-variant text-xs font-medium border-b border-outline-variant/30">
               <tr>
-                <th className="px-4 py-3">Field Zone</th>
-                <th className="px-4 py-3">Crop Variety</th>
-                <th className="px-4 py-3">Latest Evaluation</th>
-                <th className="px-4 py-3">Water Need</th>
-                <th className="px-4 py-3">Field Status</th>
-                <th className="px-4 py-3">Recommended Crop</th>
-                <th className="px-4 py-3">Disease Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colField')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colCrop')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colEvaluation')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colWater')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colCondition')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colRecommendedCrop')}</th>
+                <th className="px-4 py-3 font-medium">{t('dashboard.colDisease')}</th>
+                <th className="px-4 py-3 font-medium text-right">{t('dashboard.colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/20 bg-surface-container-lowest">
               {uniqueFields.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-on-surface-variant text-xs">
-                    No field parcels registered under this farm holding.
+                    {t('dashboard.noFields')}
                   </td>
                 </tr>
               ) : (
                 uniqueFields.map((f) => {
                   const analysis = fieldAnalyses[f.fieldId] || (f.localFieldId ? fieldAnalyses[f.localFieldId] : undefined);
-                  const row = buildFieldDecisionRow(f, analysis);
+                  const disease = fieldDiseaseMap[f.fieldId] || (f.localFieldId ? fieldDiseaseMap[f.localFieldId] : undefined);
+                  const row = buildFieldDecisionRow(f, analysis, disease);
 
                   const getBadgeClass = (badge: BadgeSeverity): string => {
                     switch (badge) {
                       case 'urgent':
                       case 'critical':
-                        return 'bg-error/15 text-error font-extrabold border border-error/30';
+                        return 'bg-[#faecea] dark:bg-[#3b1816] text-[#a82a1d] dark:text-[#f28b82] font-medium border border-[#f2cfcb] dark:border-[#5c1c17]';
                       case 'high':
                       case 'attention':
-                        return 'bg-amber-500/15 text-amber-700 font-bold border border-amber-500/30';
+                        return 'bg-[#fbf4e8] dark:bg-[#3d2605] text-[#935b13] dark:text-[#f5ba5e] font-medium border border-[#f0debe] dark:border-[#633e08]';
                       case 'moderate':
-                        return 'bg-amber-400/15 text-amber-800 font-semibold border border-amber-400/20';
+                        return 'bg-[#f8f6ee] dark:bg-[#362f13] text-[#786118] dark:text-[#dfc36b] font-medium border border-[#eadebf] dark:border-[#5a4e1d]';
                       case 'low':
-                        return 'bg-primary/15 text-primary font-bold border border-primary/30';
                       case 'healthy':
-                        return 'bg-secondary/15 text-secondary font-bold border border-secondary/30';
+                        return 'bg-[#eaf4ee] dark:bg-[#143521] text-[#1b4d32] dark:text-[#6ec28d] font-medium border border-[#cce5d6] dark:border-[#1e4a30]';
                       case 'pending':
-                        return 'bg-secondary/15 text-secondary font-bold animate-pulse border border-secondary/30';
+                        return 'bg-[#f0ede4] dark:bg-[#232924] text-[#5e584e] dark:text-[#a39f95] font-medium border border-[#ded9cd] dark:border-[#38423a]';
                       case 'failed':
-                        return 'bg-error/15 text-error font-bold border border-error/30';
+                        return 'bg-[#faecea] dark:bg-[#3b1816] text-[#a82a1d] dark:text-[#f28b82] font-medium border border-[#f2cfcb] dark:border-[#5c1c17]';
                       default:
                         return 'text-outline italic';
                     }
@@ -413,63 +421,63 @@ export const DashboardPage: React.FC = () => {
                       <td className="px-4 py-3.5">
                         <Link
                           to={row.decisionUrl}
-                          className="font-bold text-on-surface hover:text-primary no-underline block"
+                          className="font-medium text-on-surface hover:text-primary no-underline block"
                         >
                           {row.fieldName}
                         </Link>
                         <span className="font-mono text-[10px] text-on-surface-variant">{row.fieldId}</span>
                       </td>
-                      <td className="px-4 py-3.5 font-semibold text-on-surface">
+                      <td className="px-4 py-3.5 font-medium text-on-surface">
                         {row.cropType}
                       </td>
                       <td className="px-4 py-3.5 text-on-surface-variant">
                         {row.status === 'PENDING' ? (
-                          <span className="inline-flex items-center gap-1.5 text-secondary font-bold">
-                            <span className="w-2 h-2 rounded-full bg-secondary animate-pulse" />
+                          <span className="inline-flex items-center gap-1.5 text-secondary font-medium text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
                             Analysis queued
                           </span>
                         ) : row.status === 'PROCESSING' ? (
-                          <span className="inline-flex items-center gap-1.5 text-primary font-bold">
-                            <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                          <span className="inline-flex items-center gap-1.5 text-primary font-medium text-[11px]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
                             Analyzing...
                           </span>
                         ) : row.status === 'FAILED' ? (
-                          <span className="inline-flex items-center gap-1 text-error font-medium" title={analysis?.errorMessage ? String(analysis.errorMessage) : undefined}>
+                          <span className="inline-flex items-center gap-1 text-[#a82a1d] font-medium text-[11px]" title={analysis?.errorMessage ? String(analysis.errorMessage) : undefined}>
                             <span className="material-symbols-outlined text-[14px]">error</span>
                             Analysis failed
                           </span>
                         ) : row.status === 'INSUFFICIENT_DATA' ? (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                          <span className="inline-flex items-center gap-1 text-[#935b13] font-medium text-[11px]">
                             <span className="material-symbols-outlined text-[14px]">warning</span>
                             Insufficient data
                           </span>
                         ) : row.status === 'UNEVALUATED' ? (
-                          <span className="text-outline italic">No evaluation yet</span>
+                          <span className="text-outline italic text-[11px]">No evaluation yet</span>
                         ) : (
-                          <span>{row.formattedDate}</span>
+                          <span className="tabular-nums font-mono text-[11px]">{row.formattedDate}</span>
                         )}
                       </td>
                       <td className="px-4 py-3.5">
                         {row.status === 'UNEVALUATED' ? (
                           <span className="text-outline">—</span>
                         ) : row.status === 'PENDING' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.waterNeedBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.waterNeedBadge)}`}>
                             Queued
                           </span>
                         ) : row.status === 'PROCESSING' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.waterNeedBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.waterNeedBadge)}`}>
                             Analyzing...
                           </span>
                         ) : row.status === 'FAILED' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.waterNeedBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.waterNeedBadge)}`}>
                             Failed
                           </span>
                         ) : row.status === 'INSUFFICIENT_DATA' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.waterNeedBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.waterNeedBadge)}`}>
                             Insufficient data
                           </span>
                         ) : (
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getBadgeClass(row.waterNeedBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${getBadgeClass(row.waterNeedBadge)}`}>
                             {row.waterNeed || 'N/A'}
                           </span>
                         )}
@@ -478,23 +486,23 @@ export const DashboardPage: React.FC = () => {
                         {row.status === 'UNEVALUATED' ? (
                           <span className="text-outline">—</span>
                         ) : row.status === 'PENDING' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.fieldStatusBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.fieldStatusBadge)}`}>
                             Queued
                           </span>
                         ) : row.status === 'PROCESSING' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.fieldStatusBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.fieldStatusBadge)}`}>
                             Analyzing...
                           </span>
                         ) : row.status === 'FAILED' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.fieldStatusBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.fieldStatusBadge)}`}>
                             Failed
                           </span>
                         ) : row.status === 'INSUFFICIENT_DATA' ? (
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${getBadgeClass(row.fieldStatusBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md font-medium text-[11px] ${getBadgeClass(row.fieldStatusBadge)}`}>
                             Insufficient data
                           </span>
                         ) : (
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getBadgeClass(row.fieldStatusBadge)}`}>
+                          <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium ${getBadgeClass(row.fieldStatusBadge)}`}>
                             {row.fieldStatus || 'N/A'}
                           </span>
                         )}
@@ -517,16 +525,16 @@ export const DashboardPage: React.FC = () => {
                         )}
                       </td>
                       <td className="px-4 py-3.5">
-                        <span className="px-2 py-0.5 rounded bg-surface-container font-mono text-[10px] text-on-surface-variant">
+                        <span className="px-2 py-0.5 rounded-md bg-surface-container font-mono text-[10px] text-on-surface-variant">
                           {row.diseaseStatus}
                         </span>
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <Link
                           to={row.decisionUrl}
-                          className="h-8 px-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-xs inline-flex items-center gap-1 no-underline transition-colors"
+                          className="h-8 px-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-xs inline-flex items-center gap-1 no-underline transition-colors border border-outline-variant/40"
                         >
-                          <span>View Decision</span>
+                          <span>{t('dashboard.viewDecision')}</span>
                           <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                         </Link>
                       </td>
@@ -578,26 +586,26 @@ export const DashboardPage: React.FC = () => {
               {fields.map((f) => (
                 <div
                   key={f.fieldId}
-                  className="p-4 rounded-xl bg-surface-container-low/50 hover:bg-surface-container-low border border-outline-variant/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-4 rounded-xl bg-surface-container-low/50 hover:bg-surface-container-low border border-outline-variant/30 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                 >
                   <div className="flex items-start gap-3.5">
-                    <div className="w-10 h-10 rounded-xl bg-primary-container text-on-primary flex items-center justify-center font-bold text-sm shrink-0">
-                      <span className="material-symbols-outlined text-[20px]">grass</span>
+                    <div className="w-9 h-9 rounded-lg bg-surface-container text-primary flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">grass</span>
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
                         <Link
                           to={`/dashboard/fields/${f.fieldId}`}
-                          className="font-bold text-sm text-on-surface hover:text-primary transition-colors no-underline"
+                          className="font-medium text-sm text-on-surface hover:text-primary transition-colors no-underline"
                         >
                           {f.name}
                         </Link>
                         <StatusBadge status={f.status} />
                       </div>
                       <div className="text-xs text-on-surface-variant mt-0.5">
-                        <span className="font-semibold text-on-surface">{f.cropType}</span> •{' '}
+                        <span className="font-medium text-on-surface">{f.cropType}</span> •{' '}
                         <span>{f.soilType}</span> •{' '}
-                        <span>{f.areaHectares} Hectares</span>
+                        <span className="tabular-nums font-mono">{f.areaHectares} ha</span>
                       </div>
                     </div>
                   </div>
@@ -605,17 +613,17 @@ export const DashboardPage: React.FC = () => {
                   <div className="flex items-center gap-2 shrink-0">
                     <Link
                       to={`/dashboard/fields/${f.fieldId}`}
-                      className="h-8 px-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-xs flex items-center gap-1 transition-colors no-underline"
+                      className="h-8 px-3 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-xs flex items-center gap-1.5 transition-colors no-underline border border-outline-variant/40"
                     >
-                      <span className="material-symbols-outlined text-[16px]">insights</span>
+                      <span className="material-symbols-outlined text-[15px]">insights</span>
                       <span>Telemetry</span>
                     </Link>
                     <Link
                       to={`/dashboard/fields/${f.fieldId}/edit`}
-                      className="h-8 px-2.5 rounded-lg border border-outline-variant/40 hover:bg-surface-container text-on-surface-variant font-semibold text-xs flex items-center transition-colors"
+                      className="h-8 px-2.5 rounded-lg border border-outline-variant/40 hover:bg-surface-container text-on-surface-variant font-medium text-xs flex items-center transition-colors"
                       title="Edit Field"
                     >
-                      <span className="material-symbols-outlined text-[16px]">edit</span>
+                      <span className="material-symbols-outlined text-[15px]">edit</span>
                     </Link>
                   </div>
                 </div>
@@ -628,12 +636,12 @@ export const DashboardPage: React.FC = () => {
         <div className="lg:col-span-4 flex flex-col gap-6">
           <div className="bg-surface-container-lowest rounded-2xl p-6 shadow-sm border border-outline-variant/30 flex flex-col gap-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-on-surface">
-                Mesh Telemetry Feed
+              <span className="text-xs font-semibold text-on-surface">
+                Field telemetry feed
               </span>
-              <span className="flex items-center gap-1 text-[11px] text-primary font-bold">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                Live LoRaWAN
+              <span className="flex items-center gap-1.5 text-[11px] text-secondary font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                In-situ telemetry
               </span>
             </div>
 
@@ -642,9 +650,9 @@ export const DashboardPage: React.FC = () => {
               <div className="space-y-1">
                 <label
                   htmlFor="telemetry-sector-select"
-                  className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block"
+                  className="text-xs font-medium text-on-surface-variant block mb-1"
                 >
-                  Sector Telemetry View
+                  Sector view
                 </label>
                 <select
                   id="telemetry-sector-select"
@@ -669,38 +677,38 @@ export const DashboardPage: React.FC = () => {
                   <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 flex flex-col gap-3">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-on-surface-variant">Average Soil Moisture</span>
-                      <span className="font-extrabold text-on-surface">
+                      <span className="font-medium text-sm text-on-surface tabular-nums font-mono">
                         {aggregatedTelemetry.avgSoilMoisture !== null ? `${aggregatedTelemetry.avgSoilMoisture}%` : '—'}
                       </span>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-surface-container-high overflow-hidden">
+                    <div className="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
                       <div
-                        className="h-full bg-primary rounded-full"
+                        className="h-full bg-primary rounded-full transition-all"
                         style={{
-                          width: `${Math.min(100, Math.max(0, (aggregatedTelemetry.avgSoilMoisture || 0) * 2))}%`,
+                          width: `${Math.min(100, Math.max(0, Number(aggregatedTelemetry.avgSoilMoisture || 0)))}%`,
                         }}
                       />
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-on-surface-variant">
-                      <span>Reporting Sectors: {aggregatedTelemetry.activeSectorsReporting} / {uniqueFields.length}</span>
-                      <span className="text-secondary font-semibold">Active Mesh</span>
+                      <span>Reporting sectors: <strong className="tabular-nums font-mono font-medium">{aggregatedTelemetry.activeSectorsReporting} / {uniqueFields.length}</strong></span>
+                      <span className="text-secondary font-medium">Synchronized</span>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 rounded-xl bg-surface-container-low flex flex-col">
-                      <span className="text-[11px] text-on-surface-variant font-medium">Mean Humidity</span>
-                      <span className="text-base font-bold text-on-surface mt-0.5">
+                    <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-col">
+                      <span className="text-[11px] text-on-surface-variant font-medium">Mean humidity</span>
+                      <span className="text-base font-medium text-on-surface mt-0.5 tabular-nums font-mono">
                         {aggregatedTelemetry.avgHumidity !== null ? `${aggregatedTelemetry.avgHumidity}%` : '—'}
                       </span>
-                      <span className="text-[10px] text-secondary font-semibold">Ambient Air</span>
+                      <span className="text-[10px] text-on-surface-variant">Ambient air</span>
                     </div>
-                    <div className="p-3 rounded-xl bg-surface-container-low flex flex-col">
-                      <span className="text-[11px] text-on-surface-variant font-medium">Mean Temp</span>
-                      <span className="text-base font-bold text-on-surface mt-0.5">
+                    <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-col">
+                      <span className="text-[11px] text-on-surface-variant font-medium">Mean temperature</span>
+                      <span className="text-base font-medium text-on-surface mt-0.5 tabular-nums font-mono">
                         {aggregatedTelemetry.avgTemperature !== null ? `${aggregatedTelemetry.avgTemperature} °C` : '—'}
                       </span>
-                      <span className="text-[10px] text-primary font-semibold">Canopy Zone</span>
+                      <span className="text-[10px] text-on-surface-variant">Canopy zone</span>
                     </div>
                   </div>
                 </>
@@ -731,42 +739,42 @@ export const DashboardPage: React.FC = () => {
                   <>
                     <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 flex flex-col gap-3">
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-on-surface-variant">Sector Soil Moisture</span>
-                        <span className="font-extrabold text-on-surface">
-                          {moisture ? `${moisture.value ?? moisture.rawValue}%` : '—'}
+                        <span className="text-on-surface-variant">{t('dashboard.sectorMoisture')}</span>
+                        <span className="font-medium text-sm text-on-surface tabular-nums font-mono">
+                          {moisture ? `${formatNumber(String(moisture.value ?? moisture.rawValue))}%` : '—'}
                         </span>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-surface-container-high overflow-hidden">
+                      <div className="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
                         <div
-                          className="h-full bg-primary rounded-full"
+                          className="h-full bg-primary rounded-full transition-all"
                           style={{
                             width: `${Math.min(
                               100,
-                              Math.max(0, Number(moisture?.value ?? moisture?.rawValue ?? 0) * 2)
+                              Math.max(0, Number(moisture?.value ?? moisture?.rawValue ?? 0))
                             )}%`,
                           }}
                         />
                       </div>
                       <div className="flex justify-between items-center text-[11px] text-on-surface-variant">
-                        <span>Readings: {sectorReadings.length} packets</span>
-                        <span className="text-primary font-semibold">Synchronized</span>
+                        <span>{t('dashboard.readingsPackets', { count: sectorReadings.length })}</span>
+                        <span className="text-secondary font-medium">{t('dashboard.synchronizedStatus')}</span>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 rounded-xl bg-surface-container-low flex flex-col">
-                        <span className="text-[11px] text-on-surface-variant font-medium">Humidity</span>
-                        <span className="text-base font-bold text-on-surface mt-0.5">
-                          {humidity ? `${humidity.value ?? humidity.rawValue}%` : '—'}
+                      <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-col">
+                        <span className="text-[11px] text-on-surface-variant font-medium">{t('dashboard.humidity')}</span>
+                        <span className="text-base font-medium text-on-surface mt-0.5 tabular-nums font-mono">
+                          {humidity ? `${formatNumber(String(humidity.value ?? humidity.rawValue))}%` : '—'}
                         </span>
-                        <span className="text-[10px] text-secondary font-semibold">Relative</span>
+                        <span className="text-[10px] text-on-surface-variant">{t('dashboard.relative')}</span>
                       </div>
-                      <div className="p-3 rounded-xl bg-surface-container-low flex flex-col">
-                        <span className="text-[11px] text-on-surface-variant font-medium">Temperature</span>
-                        <span className="text-base font-bold text-on-surface mt-0.5">
-                          {temp ? `${temp.value ?? temp.rawValue} °C` : '—'}
+                      <div className="p-3 rounded-lg bg-surface-container-low border border-outline-variant/20 flex flex-col">
+                        <span className="text-[11px] text-on-surface-variant font-medium">{t('dashboard.temperature')}</span>
+                        <span className="text-base font-medium text-on-surface mt-0.5 tabular-nums font-mono">
+                          {temp ? `${formatNumber(String(temp.value ?? temp.rawValue))} °C` : '—'}
                         </span>
-                        <span className="text-[10px] text-primary font-semibold">Sensor Probe</span>
+                        <span className="text-[10px] text-on-surface-variant">{t('dashboard.sensorProbe')}</span>
                       </div>
                     </div>
                   </>
@@ -790,28 +798,28 @@ export const DashboardPage: React.FC = () => {
 
             <Link
               to="/dashboard/monitoring"
-              className="w-full h-10 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-bold text-xs flex items-center justify-center gap-1.5 transition-colors no-underline"
+              className="w-full h-9 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-xs flex items-center justify-center gap-1.5 transition-colors no-underline border border-outline-variant/40"
             >
-              <span className="material-symbols-outlined text-[18px] text-primary">sensors</span>
-              <span>Open Soil Telemetry Console</span>
+              <span className="material-symbols-outlined text-[16px] text-primary">sensors</span>
+              <span>{t('dashboard.openTelemetry')}</span>
             </Link>
           </div>
 
           {/* AI Model Notice Card */}
-          <div className="p-5 rounded-2xl bg-surface-container-low border border-outline-variant/30 flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-on-surface">
-              <span className="material-symbols-outlined text-primary text-[20px]">psychiatry</span>
-              <span>AI Crop Disease Diagnosis</span>
+          <div className="p-5 rounded-xl bg-surface-container-low border border-outline-variant/30 flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-xs font-medium text-on-surface">
+              <span className="material-symbols-outlined text-primary text-[18px]">psychiatry</span>
+              <span>{t('dashboard.aiCropNotice')}</span>
             </div>
             <p className="text-xs text-on-surface-variant leading-relaxed">
-              Upload crop leaf photographs to initiate diagnostic jobs. Model unavailable status is reported cleanly without fabricating results.
+              {t('dashboard.aiCropDesc')}
             </p>
             <Link
               to="/dashboard/ai"
-              className="mt-2 text-xs font-bold text-primary hover:underline inline-flex items-center gap-1"
+              className="mt-1 text-xs font-medium text-primary hover:underline inline-flex items-center gap-1"
             >
-              <span>Launch AI Diagnostic Studio</span>
-              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+              <span>{t('dashboard.launchStudio')}</span>
+              <span className="material-symbols-outlined text-[15px]">arrow_forward</span>
             </Link>
           </div>
         </div>

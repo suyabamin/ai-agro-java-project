@@ -6,6 +6,7 @@ import { monitoringService, validateCropImageFile, type MonitoringRecord } from 
 import type { Field } from '../types/field';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
+import { DiseaseDetectionCard, formatDiseaseLabel, parseConfidencePercent } from '../components/monitoring/DiseaseDetectionCard';
 
 function parseApiErrorMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
@@ -79,8 +80,11 @@ export const FarmerFieldDetailsPage: React.FC = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFileError, setImageFileError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [analyzingDisease, setAnalyzingDisease] = useState(false);
+  const [diseaseStep, setDiseaseStep] = useState<'idle' | 'uploading' | 'inferring'>('idle');
   const [diseaseResult, setDiseaseResult] = useState<MonitoringRecord | null>(null);
+  const [diseaseAnalyses, setDiseaseAnalyses] = useState<MonitoringRecord[]>([]);
   const [diseaseError, setDiseaseError] = useState<string | null>(null);
 
   // AI Analysis State
@@ -104,7 +108,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
   // History State
   const [recentTelemetry, setRecentTelemetry] = useState<MonitoringRecord[]>([]);
   const [recentAnalyses, setRecentAnalyses] = useState<MonitoringRecord[]>([]);
-  const [historyTab, setHistoryTab] = useState<'analyses' | 'telemetry'>('analyses');
+  const [historyTab, setHistoryTab] = useState<'analyses' | 'disease' | 'telemetry'>('analyses');
 
   const fileInputId = useId();
 
@@ -124,9 +128,10 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       if (fieldData) {
         const farmId = fieldData.farmId;
         // Fetch telemetry & analyses history concurrently
-        const [telRes, analRes] = await Promise.allSettled([
+        const [telRes, analRes, diseaseRes] = await Promise.allSettled([
           monitoringService.telemetry(farmId, fieldId),
           monitoringService.listAgriculturalAnalyses(farmId, fieldId, null, 10),
+          monitoringService.analyses(farmId, fieldId, null, 10),
         ]);
 
         if (telRes.status === 'fulfilled' && telRes.value?.data) {
@@ -137,6 +142,13 @@ export const FarmerFieldDetailsPage: React.FC = () => {
           setRecentAnalyses(items);
           if (items.length > 0) {
             setLatestAnalysis(items[0]);
+          }
+        }
+        if (diseaseRes.status === 'fulfilled' && diseaseRes.value?.data?.items) {
+          const dItems = diseaseRes.value.data.items;
+          setDiseaseAnalyses(dItems);
+          if (dItems.length > 0) {
+            setDiseaseResult(dItems[0]);
           }
         }
       }
@@ -298,15 +310,11 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     }
   };
 
-  // Image Selection Handler
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const processSelectedFile = (selectedFile: File | null | undefined) => {
     setImageFileError(null);
     setDiseaseError(null);
-    setDiseaseResult(null);
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+    if (!selectedFile) return;
 
-    const selectedFile = files[0];
     const validationErr = validateCropImageFile(selectedFile);
     if (validationErr) {
       setImageFileError(validationErr);
@@ -323,12 +331,24 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     reader.readAsDataURL(selectedFile);
   };
 
+  // Image Selection Handler
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    processSelectedFile(e.target.files?.[0]);
+  };
+
+  const handleClearImage = () => {
+    setImageFile(null);
+    setImagePreview(null);
+    setImageFileError(null);
+    setDiseaseError(null);
+  };
+
   // Upload Leaf Image & Disease Detection
   const handleUploadAndDetectDisease = async () => {
     if (!field || !imageFile) return;
     setAnalyzingDisease(true);
+    setDiseaseStep('uploading');
     setDiseaseError(null);
-    setDiseaseResult(null);
 
     const targetFarmId = field.farmId || (fieldId && fieldId.includes('--') ? fieldId.split('--')[0] : '');
     const targetFieldId = field.fieldId || fieldId || '';
@@ -340,19 +360,20 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       if (!imageId) throw new Error('Image uploaded but server did not return an image ID.');
 
       // 2. Submit disease analysis
+      setDiseaseStep('inferring');
       const analysisRes = await monitoringService.analyzeDisease(targetFarmId, targetFieldId, imageId);
       setDiseaseResult(analysisRes.data || null);
 
-      // Refresh analyses history
-      const analRes = await monitoringService.analyses(targetFarmId, targetFieldId, null, 10);
-      if (analRes?.data?.items) {
-        setRecentAnalyses(analRes.data.items);
-        setLatestAnalysis(analRes.data.items[0]);
+      // Refresh disease analyses history
+      const diseaseRes = await monitoringService.analyses(targetFarmId, targetFieldId, null, 10);
+      if (diseaseRes?.data?.items) {
+        setDiseaseAnalyses(diseaseRes.data.items);
       }
     } catch (err: unknown) {
       setDiseaseError(parseApiErrorMessage(err, 'Disease analysis request failed.'));
     } finally {
       setAnalyzingDisease(false);
+      setDiseaseStep('idle');
     }
   };
 
@@ -863,11 +884,25 @@ export const FarmerFieldDetailsPage: React.FC = () => {
               <div className="space-y-3">
                 <label
                   htmlFor={fileInputId}
-                  className="border-2 border-dashed border-outline-variant/40 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer hover:border-primary hover:bg-surface-container-low transition-all"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragActive(true);
+                  }}
+                  onDragLeave={() => setDragActive(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragActive(false);
+                    processSelectedFile(e.dataTransfer.files?.[0]);
+                  }}
+                  className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                    dragActive
+                      ? 'border-primary bg-primary/5'
+                      : 'border-outline-variant/40 hover:border-primary hover:bg-surface-container-low'
+                  }`}
                 >
                   <span className="material-symbols-outlined text-[36px] text-on-surface-variant mb-2">add_photo_alternate</span>
-                  <span className="text-xs font-bold text-on-surface">Click to select leaf image</span>
-                  <span className="text-[10px] text-on-surface-variant mt-1">PNG or JPEG format (max 8MB)</span>
+                  <span className="text-xs font-bold text-on-surface">Drag & drop or click to select leaf image</span>
+                  <span className="text-[10px] text-on-surface-variant mt-1">PNG or JPEG format (max 8 MiB)</span>
                   <input
                     id={fileInputId}
                     type="file"
@@ -882,9 +917,19 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                 )}
 
                 {imageFile && (
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low text-xs">
-                    <span className="font-semibold text-on-surface truncate max-w-[200px]">{imageFile.name}</span>
-                    <span className="text-on-surface-variant">{(imageFile.size / 1024).toFixed(1)} KB</span>
+                  <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-surface-container-low text-xs">
+                    <span className="font-semibold text-on-surface truncate max-w-[180px]">{imageFile.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-on-surface-variant">{(imageFile.size / 1024).toFixed(1)} KB</span>
+                      <button
+                        type="button"
+                        onClick={handleClearImage}
+                        disabled={analyzingDisease}
+                        className="text-[11px] font-bold text-error hover:underline cursor-pointer disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -894,10 +939,16 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                   disabled={!imageFile || analyzingDisease}
                   className="w-full h-10 rounded-xl bg-primary hover:bg-secondary text-on-primary font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95 transition-all disabled:opacity-50"
                 >
-                  <span className="material-symbols-outlined text-[16px]">
+                  <span className={`material-symbols-outlined text-[16px] ${analyzingDisease ? 'animate-spin' : ''}`}>
                     {analyzingDisease ? 'progress_activity' : 'cloud_upload'}
                   </span>
-                  <span>{analyzingDisease ? 'Uploading & Evaluating...' : 'Upload & Analyze Leaf'}</span>
+                  <span>
+                    {diseaseStep === 'uploading'
+                      ? 'Uploading Leaf Image...'
+                      : diseaseStep === 'inferring'
+                        ? 'Running Disease Model...'
+                        : 'Upload & Analyze Leaf'}
+                  </span>
                 </button>
               </div>
 
@@ -915,32 +966,27 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                 )}
 
                 {diseaseError && (
-                  <div className="p-3 rounded-xl bg-error/10 border border-error/30 text-xs text-error flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[16px]">error</span>
-                    <span>{diseaseError}</span>
-                  </div>
-                )}
-
-                {diseaseResult && (
-                  <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-on-surface">Disease Inference Result</span>
-                      <StatusBadge status={String(diseaseResult.status || 'MODEL_UNAVAILABLE')} />
+                  <div className="p-3 rounded-xl bg-error/10 border border-error/30 text-xs text-error flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[16px]">error</span>
+                      <span>{diseaseError}</span>
                     </div>
-                    {diseaseResult.status === 'MODEL_UNAVAILABLE' ? (
-                      <p className="text-xs text-on-surface-variant leading-relaxed">
-                        Notice: {String(diseaseResult.errorMessage || 'No evaluated disease model weights are registered in the AI service.')}
-                      </p>
-                    ) : (
-                      <div className="text-xs text-on-surface space-y-1">
-                        <div>Predicted Class: <span className="font-bold text-primary">{String(diseaseResult.predictedClass || 'None')}</span></div>
-                        {diseaseResult.confidenceScore !== undefined && (
-                          <div>Confidence: {(Number(diseaseResult.confidenceScore) * 100).toFixed(1)}%</div>
-                        )}
-                      </div>
+                    {imageFile && (
+                      <button
+                        type="button"
+                        onClick={handleUploadAndDetectDisease}
+                        className="px-2.5 py-1 rounded-lg bg-primary text-on-primary text-[11px] font-bold cursor-pointer shrink-0"
+                      >
+                        Retry
+                      </button>
                     )}
                   </div>
                 )}
+
+                <DiseaseDetectionCard
+                  analysis={diseaseResult}
+                  onRetry={imageFile ? handleUploadAndDetectDisease : undefined}
+                />
               </div>
             </div>
           </div>
@@ -968,6 +1014,17 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setHistoryTab('disease')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    historyTab === 'disease'
+                      ? 'bg-primary text-on-primary shadow-xs'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  Disease Detections ({diseaseAnalyses.length})
+                </button>
+                <button
+                  type="button"
                   onClick={() => setHistoryTab('telemetry')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     historyTab === 'telemetry'
@@ -979,6 +1036,56 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {historyTab === 'disease' && (
+              <div className="space-y-3">
+                {diseaseAnalyses.length === 0 ? (
+                  <p className="text-xs text-on-surface-variant text-center py-6">No crop leaf disease detections recorded.</p>
+                ) : (
+                  <div className="divide-y divide-outline-variant/15">
+                    {diseaseAnalyses.map((item, idx) => {
+                      const conf = parseConfidencePercent(item);
+                      const dName = item.diseaseName || item.predictedClass;
+                      return (
+                        <div key={String(item.id || item.analysisId || idx)} className="py-3 flex flex-wrap items-center justify-between gap-4">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-on-surface font-mono">
+                                {String(item.id || item.analysisId || 'Analysis').substring(0, 18)}...
+                              </span>
+                              <StatusBadge status={String(item.status || 'COMPLETED')} />
+                              {item.status === 'COMPLETED' && typeof item.isHealthy === 'boolean' && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  item.isHealthy
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                }`}>
+                                  {item.isHealthy ? 'Healthy' : 'Disease Detected'}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-on-surface-variant">
+                              {item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : 'Recent'}
+                              {item.modelVersion ? ` • ${String(item.modelVersion)}` : ''}
+                            </p>
+                          </div>
+                          <div className="text-right text-xs">
+                            {item.status === 'COMPLETED' && dName ? (
+                              <span className="font-bold text-primary">
+                                {formatDiseaseLabel(String(dName))}
+                                {conf !== null ? ` (${conf.toFixed(1)}%)` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-on-surface-variant">{String(item.errorMessage || item.status || '—')}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {historyTab === 'analyses' && (
               <div className="space-y-3">
