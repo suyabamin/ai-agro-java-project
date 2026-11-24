@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class FirestoreFieldMonitoringRepository implements FieldMonitoringRepository {
     private static final Logger log = LoggerFactory.getLogger(FirestoreFieldMonitoringRepository.class);
     private static final String ACTIVITY = "field_activity";
-    private static final List<String> ALLOWED_COLLECTIONS = List.of("field_images", "soil_telemetry", "ai_analysis_results", "irrigation_plans");
+    private static final List<String> ALLOWED_COLLECTIONS = List.of("field_images", "soil_telemetry", "ai_analysis_results", "irrigation_plans", "disease_research_reports");
     private final FirebaseConfig firebaseConfig;
     private final Map<String, Map<String, Map<String, Object>>> memory = new ConcurrentHashMap<>();
 

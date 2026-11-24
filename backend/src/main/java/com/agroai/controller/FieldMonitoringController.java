@@ -12,6 +12,7 @@ import com.agroai.security.FirebaseUserDetails;
 import com.agroai.security.RequiresRevocationCheck;
 import com.agroai.service.AgriculturalAnalysisService;
 import com.agroai.service.DiseaseAnalysisService;
+import com.agroai.service.DiseaseResearchService;
 import com.agroai.service.FieldHistoryService;
 import com.agroai.service.IrrigationPlanningService;
 import com.agroai.service.SoilTelemetryService;
@@ -34,16 +35,26 @@ public class FieldMonitoringController {
     private final SoilTelemetryService telemetry;
     private final DiseaseAnalysisService disease;
     private final AgriculturalAnalysisService agriculturalAnalysis;
+    private final DiseaseResearchService diseaseResearch;
     private final IrrigationPlanningService irrigation;
     private final FieldHistoryService history;
 
     public FieldMonitoringController(CropImageService images, SoilTelemetryService telemetry,
             DiseaseAnalysisService disease, AgriculturalAnalysisService agriculturalAnalysis,
             IrrigationPlanningService irrigation, FieldHistoryService history) {
+        this(images, telemetry, disease, agriculturalAnalysis, null, irrigation, history);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public FieldMonitoringController(CropImageService images, SoilTelemetryService telemetry,
+            DiseaseAnalysisService disease, AgriculturalAnalysisService agriculturalAnalysis,
+            DiseaseResearchService diseaseResearch,
+            IrrigationPlanningService irrigation, FieldHistoryService history) {
         this.images = images;
         this.telemetry = telemetry;
         this.disease = disease;
         this.agriculturalAnalysis = agriculturalAnalysis;
+        this.diseaseResearch = diseaseResearch;
         this.irrigation = irrigation;
         this.history = history;
     }
@@ -144,6 +155,25 @@ public class FieldMonitoringController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> getDiseaseAnalysis(@PathVariable String farmId,
             @PathVariable String fieldId, @PathVariable String analysisId, @AuthenticationPrincipal FirebaseUserDetails user) {
         return ResponseEntity.ok(ApiResponse.success(disease.get(farmId, fieldId, analysisId, user.getUid()), "Disease analysis retrieved"));
+    }
+
+    @RequiresRevocationCheck
+    @PostMapping("/disease-analyses/{analysisId}/research")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> triggerDiseaseResearch(@PathVariable String farmId,
+            @PathVariable String fieldId, @PathVariable String analysisId, @AuthenticationPrincipal FirebaseUserDetails user) {
+        Map<String, Object> result = diseaseResearch != null
+                ? diseaseResearch.triggerAsync(farmId, fieldId, analysisId, user.getUid())
+                : Map.of("researchStatus", "UNAVAILABLE");
+        return ResponseEntity.accepted().body(ApiResponse.success(result, "Disease research request accepted"));
+    }
+
+    @GetMapping("/disease-analyses/{analysisId}/research")
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getDiseaseResearch(@PathVariable String farmId,
+            @PathVariable String fieldId, @PathVariable String analysisId, @AuthenticationPrincipal FirebaseUserDetails user) {
+        List<Map<String, Object>> reports = diseaseResearch != null
+                ? diseaseResearch.listForAnalysis(farmId, fieldId, analysisId, user.getUid())
+                : List.of();
+        return ResponseEntity.ok(ApiResponse.success(reports, "Disease research reports retrieved"));
     }
 
     @RequiresRevocationCheck

@@ -30,21 +30,29 @@ public class DiseaseAnalysisService {
     private final MonitoringAuthorizationService authorization;
     private final AiInferenceClient aiClient;
     private final FieldRepository fieldRepository;
+    private final DiseaseResearchService researchService;
 
     public DiseaseAnalysisService(FieldMonitoringRepository repository, CropImageService images,
             MonitoringAuthorizationService authorization, AiInferenceClient aiClient) {
-        this(repository, images, authorization, aiClient, null);
+        this(repository, images, authorization, aiClient, null, null);
+    }
+
+    public DiseaseAnalysisService(FieldMonitoringRepository repository, CropImageService images,
+            MonitoringAuthorizationService authorization, AiInferenceClient aiClient,
+            FieldRepository fieldRepository) {
+        this(repository, images, authorization, aiClient, fieldRepository, null);
     }
 
     @Autowired
     public DiseaseAnalysisService(FieldMonitoringRepository repository, CropImageService images,
             MonitoringAuthorizationService authorization, AiInferenceClient aiClient,
-            FieldRepository fieldRepository) {
+            FieldRepository fieldRepository, DiseaseResearchService researchService) {
         this.repository = repository;
         this.images = images;
         this.authorization = authorization;
         this.aiClient = aiClient;
         this.fieldRepository = fieldRepository;
+        this.researchService = researchService;
     }
 
     public Map<String, Object> submit(String farmId, String fieldId, String imageId, String uid, String idempotencyKey) {
@@ -129,6 +137,16 @@ public class DiseaseAnalysisService {
         image.put("processingStatus", analysis.get("status"));
         repository.updateWithActivity("field_images", imageId, image,
                 MonitoringActivity.create(farmId, canonicalFieldId, uid, "CROP_IMAGE_ANALYSIS_LINKED", "IMAGE", imageId, "Image linked to analysis"));
+
+        if (researchService != null && "COMPLETED".equals(analysis.get("status"))) {
+            try {
+                Map<String, Object> research = researchService.triggerAsync(farmId, canonicalFieldId, analysisId, uid);
+                analysis.put("researchStatus", research.getOrDefault("researchStatus", "PENDING"));
+                analysis.put("latestResearchId", research.get("researchId"));
+            } catch (Exception ignored) {
+                // Research worker errors must never invalidate a completed disease analysis.
+            }
+        }
         analysis.put("id", analysisId);
         return analysis;
     }

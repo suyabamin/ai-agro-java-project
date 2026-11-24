@@ -89,4 +89,23 @@ public class AiInferenceClient {
             throw new IllegalStateException("AI availability request failed or timed out", e);
         }
     }
+
+    public Map<String, Object> researchDisease(Map<String, Object> payload) {
+        if (serviceKey == null || serviceKey.isBlank()) throw new IllegalStateException("AI service authentication is not configured");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-AI-Service-Key", serviceKey);
+        try {
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                    endpoint.replace("/inference/disease", "/research/disease"),
+                    new HttpEntity<>(payload, headers), Map.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                throw new IllegalStateException("AI service returned an invalid response for disease research");
+            }
+            @SuppressWarnings("unchecked") Map<String, Object> result = response.getBody();
+            return result;
+        } catch (RestClientException e) {
+            throw new IllegalStateException("AI research request failed or timed out: " + e.getMessage(), e);
+        }
+    }
 }
