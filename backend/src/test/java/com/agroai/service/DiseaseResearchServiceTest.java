@@ -46,7 +46,13 @@ class DiseaseResearchServiceTest {
         Map<String, Object> aiResearch = new LinkedHashMap<>();
         aiResearch.put("researchStatus", "COMPLETED");
         aiResearch.put("lowConfidenceWarning", false);
-        aiResearch.put("sources", List.of(Map.of("title", "BARI Potato", "url", "https://bari.gov.bd/potato", "domain", "bari.gov.bd")));
+        aiResearch.put("searchProvidersAttempted", List.of("google_selenium", "tavily"));
+        aiResearch.put("successfulProvider", "tavily");
+        aiResearch.put("fallbackUsed", true);
+        aiResearch.put("fallbackReason", "GOOGLE_CAPTCHA_BLOCKED");
+        aiResearch.put("sourceCount", 1);
+        aiResearch.put("validatedSourceCount", 1);
+        aiResearch.put("sources", List.of(Map.of("title", "BARI Potato", "url", "https://bari.gov.bd/potato", "domain", "bari.gov.bd", "provider", "tavily")));
         aiResearch.put("bengaliReport", Map.of("summaryBn", "আলু ফসলে প্রাথমিক তথ্য পাওয়া গেছে।"));
         when(ai.researchDisease(anyMap())).thenReturn(aiResearch);
 
@@ -54,9 +60,16 @@ class DiseaseResearchServiceTest {
         Map<String, Object> report = service.triggerSyncForTest("farm-1", "f1", "analysis_1", "farmer-1");
 
         assertEquals("COMPLETED", report.get("researchStatus"));
+        assertEquals("tavily", report.get("successfulProvider"));
+        assertEquals(true, report.get("fallbackUsed"));
+        assertEquals("GOOGLE_CAPTCHA_BLOCKED", report.get("fallbackReason"));
         assertEquals("COMPLETED", analysis.get("status")); // disease analysis stays COMPLETED
         assertEquals("COMPLETED", analysis.get("researchStatus"));
         assertNotNull(analysis.get("researchReport"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> snap = (Map<String, Object>) analysis.get("researchReport");
+        assertEquals("tavily", snap.get("successfulProvider"));
+        assertEquals(true, snap.get("fallbackUsed"));
         verify(repository, atLeastOnce()).createWithActivity(eq(DiseaseResearchService.COLLECTION), anyString(), anyMap(), anyMap());
     }
 

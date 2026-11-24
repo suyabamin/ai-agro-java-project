@@ -278,17 +278,63 @@ def build_bengali_report(
         else ""
     )
 
+    if not sources:
+        return BengaliResearchReport(
+            summaryBn=f"{crop_name} ফসলে '{readable}' সম্পর্কে পর্যাপ্ত যাচাইকৃত তথ্য পাওয়া যায়নি।{conf_note}",
+            overviewBn=f"{crop_name} ফসলের '{readable}' সংক্রান্ত নির্ভরযোগ্য তথ্য সংগ্রহে পর্যাপ্ত প্রমাণ পাওয়া যায়নি।",
+            symptomsBn="পর্যাপ্ত যাচাইকৃত উৎস না থাকায় নির্দিষ্ট লক্ষণ তালিকাভুক্ত করা হয়নি।",
+            causesBn="সঠিক কারণ নির্ণয়ের জন্য নমুনাটি স্থানীয় কৃষি অফিসে পরীক্ষা করুন।",
+            spreadBn="রোগ ছড়ানোর ঝুঁকি এড়াতে আক্রান্ত গাছ আলাদা পর্যবেক্ষণে রাখুন।",
+            damageBn="সঠিক তথ্য ছাড়া ক্ষতির মাত্রা অনুমান করা সম্ভব নয়।",
+            immediateActionBn="আক্রান্ত পাতা সুস্থ গাছ থেকে আলাদা রাখুন এবং স্থানীয় কৃষি কর্মকর্তার সাথে যোগাযোগ করুন।",
+            preventionBn="জমি পরিচ্ছন্ন রাখুন, সুষম সেচ দিন এবং রোগমুক্ত বীজ ব্যবহার করুন।",
+            managementBn="নির্ভরযোগ্য কৃষিবিদের পরামর্শ ছাড়া কোনো রাসায়নিক বা কীটনাশক প্রয়োগ করবেন না।",
+            whenToConsultBn="উপসর্গ দ্রুত ছড়ালে অবিলম্বে উপজেলা কৃষি কর্মকর্তা বা DAE-এর পরামর্শ নিন।",
+            referencesBn="কোনো যাচাইকৃত তথ্যসূত্র পাওয়া যায়নি।",
+            cautionBn="প্রমাণ অপ্রতুল থাকায় কোনো অনুমানভিত্তিক চিকিৎসা দেওয়া হয়নি।",
+            evidenceNoticeBn="INSUFFICIENT_EVIDENCE: যাচাইকৃত উৎস না থাকায় কোনো ব্র্যান্ড বা মাত্রা সুপারিশ করা হয়নি।",
+        )
+
+    ref_list = ", ".join(f"[{i}] {s.domain}" for i, s in enumerate(sources[:5], start=1))
+
     return BengaliResearchReport(
-        summaryBn=f"{crop_name} ফসলে '{readable}' সংক্রান্ত প্রাথমিক তথ্য {len(sources)}টি উৎস থেকে সংগ্রহ করা হয়েছে।{conf_note}",
-        symptomsBn=f"সংগৃহীত উৎসের প্রাথমিক তথ্য: {joined_evidence}",
-        managementBn="সঠিক মাত্রা ও করণীয় নির্ধারণে স্থানীয় কৃষি সম্প্রসারণ অধিদপ্তর (DAE) বা BARI/BRRI-এর অনুমোদিত নির্দেশিকা অনুসরণ করুন। উৎস লিংকগুলো থেকে বিস্তারিত দেখুন।",
-        preventionBn="আক্রান্ত পাতা আলাদা করা, সুষম সেচ ও বায়ু চলাচল বজায় রাখা এবং রোগমুক্ত বীজ/চারা ব্যবহার সাধারণ প্রতিরোধমূলক ব্যবস্থা হিসেবে বিবেচিত।",
-        cautionBn="অনলাইন অনুসন্ধান থেকে পাওয়া তথ্য প্রাথমিক সহায়তা মাত্র; যাচাইকৃত কৃষিবিদের পরামর্শ ছাড়া কোনো কীটনাশক বা মাত্রা প্রয়োগ করবেন না।",
+        summaryBn=f"{crop_name} ফসলে '{readable}' সংক্রান্ত প্রাথমিক তথ্য {len(sources)}টি যাচাইকৃত উৎস থেকে সংগ্রহ করা হয়েছে।{conf_note}",
+        overviewBn=f"{crop_name} ফসলের '{readable}' একটি শনাক্তকৃত রোগ/অবস্থা, যা সংগৃহীত কৃষি উৎসে আলোচিত হয়েছে।{conf_note}",
+        symptomsBn=f"সংগৃহীত উৎসের প্রাথমিক লক্ষণ ও পর্যবেক্ষণ: {joined_evidence}",
+        causesBn="সংগৃহীত উৎস অনুযায়ী অনুকূল আবহাওয়া, আর্দ্রতা, জীবাণু বা পুষ্টির ঘাটতিসহ পরিবেশগত কারণগুলো দায়ী হতে পারে; সুনির্দিষ্ট কারণ জানতে উৎসের মূল প্রতিবেদন দেখুন।",
+        spreadBn="আক্রান্ত পাতা, মাটি, সেচের পানি, বাতাস বা কৃষি যন্ত্রপাতির মাধ্যমে রোগটি পাশের গাছে ছড়াতে পারে।",
+        damageBn="সময়মতো ব্যবস্থা না নিলে পাতার কার্যকারিতা কমে ফলন ও ফসলের গুণমান হ্রাস পেতে পারে।",
+        immediateActionBn="আক্রান্ত পাতা বা অংশ সাবধানে আলাদা করুন, জমিতে অতিরিক্ত আর্দ্রতা বা জলাবদ্ধতা থাকলে নিয়ন্ত্রণ করুন এবং আক্রান্ত অংশের ছবি ও নমুনা সংরক্ষণ করুন।",
+        managementBn="সঠিক মাত্রা ও করণীয় নির্ধারণে স্থানীয় কৃষি সম্প্রসারণ অধিদপ্তর (DAE) বা BARI/BRRI-এর অনুমোদিত নির্দেশিকা অনুসরণ করুন। নিচের উৎস লিংকগুলো থেকে বিস্তারিত দেখুন।",
+        preventionBn="আক্রান্ত পাতা আলাদা করা, সুষম সেচ ও বায়ু চলাচল বজায় রাখা, ফসল পর্যায় অনুসরণ এবং রোগমুক্ত বীজ/চারা ব্যবহার সাধারণ প্রতিরোধমূলক ব্যবস্থা হিসেবে বিবেচিত।",
+        whenToConsultBn="রোগ দ্রুত ছড়িয়ে পড়লে, শনাক্তকরণে নিম্ন আত্মবিশ্বাস থাকলে বা রাসায়নিক ব্যবস্থাপনার প্রয়োজন হলে অবিলম্বে উপজেলা কৃষি কর্মকর্তা বা অনুমোদিত কৃষিবিদের পরামর্শ নিন।",
+        referencesBn=ref_list,
+        cautionBn="অনলাইন অনুসন্ধান থেকে পাওয়া তথ্য প্রাথমিক সহায়তা মাত্র; যাচাইকৃত কৃষিবিদের পরামর্শ ছাড়া কোনো কীটনাশক, ছত্রাকনাশক বা মাত্রা প্রয়োগ করবেন না।",
         evidenceNoticeBn="এই প্রতিবেদনে কোনো অনুমানভিত্তিক রাসায়নিক মাত্রা বা ব্র্যান্ড যোগ করা হয়নি; সব তথ্য নিচে তালিকাভুক্ত উৎস থেকে সংগৃহীত।",
     )
 
 
+def _validate_and_rank_sources(sources: list[ResearchSource], max_results: int) -> list[ResearchSource]:
+    seen: set[str] = set()
+    valid: list[ResearchSource] = []
+    for src in sources:
+        url = (src.url or "").strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            continue
+        if not (src.title or "").strip():
+            continue
+        canonical = url.split("#")[0].rstrip("/")
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        valid.append(src)
+    valid.sort(key=lambda s: (_tier_priority(s.authoritativeTier), s.title.lower()))
+    return valid[:max_results]
+
+
 def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse:
+    from app.services.tavily_search_provider import TavilySearchProvider
+
     crop = infer_crop_from_disease(req.diseaseName, req.cropName)
     healthy = req.isHealthy if req.isHealthy is not None else is_healthy_class(req.diseaseName)
     low_conf = req.confidence is not None and req.confidence < _LOW_CONFIDENCE_THRESHOLD
@@ -305,19 +351,77 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             queriesUsed=[],
             sources=[],
             bengaliReport=report,
+            searchProvidersAttempted=[],
+            successfulProvider=None,
+            fallbackUsed=False,
+            fallbackReason=None,
+            sourceCount=0,
+            validatedSourceCount=0,
         )
 
     queries = build_google_queries(req.diseaseName, crop)
-    status, sources, err_code, sel_ver, browser_info = _run_selenium_google_search(queries, req.maxResults)
+    providers_attempted = ["google_selenium"]
+    status, raw_sources, err_code, sel_ver, browser_info = _run_selenium_google_search(queries, req.maxResults)
+    validated_sources = _validate_and_rank_sources(raw_sources, req.maxResults) if status == "COMPLETED" else []
 
-    if status != "COMPLETED":
-        msg = (
-            "Google Search blocked automated access (CAPTCHA/rate check). Disease prediction remains valid; retry later."
-            if status == "BLOCKED"
-            else "Selenium Google Search could not collect verified agricultural sources."
-        )
+    if status == "COMPLETED" and validated_sources:
+        report = build_bengali_report(req.diseaseName, crop, req.confidence, False, validated_sources)
         return DiseaseResearchResponse(
-            researchStatus=status,
+            researchStatus="COMPLETED",
+            analysisId=req.analysisId,
+            diseaseName=req.diseaseName,
+            cropName=crop,
+            isHealthy=False,
+            lowConfidenceWarning=low_conf,
+            queriesUsed=queries,
+            sources=validated_sources,
+            bengaliReport=report,
+            seleniumVersion=sel_ver,
+            browserInfo=browser_info,
+            searchProvidersAttempted=providers_attempted,
+            successfulProvider="google_selenium",
+            fallbackUsed=False,
+            fallbackReason=None,
+            sourceCount=len(raw_sources),
+            validatedSourceCount=len(validated_sources),
+        )
+
+    fallback_reason = err_code or f"SELENIUM_{status}"
+    providers_attempted.append("tavily")
+    tavily_outcome = TavilySearchProvider().search(
+        queries,
+        max_results=req.maxResults,
+        domain_classifier=classify_domain_tier,
+    )
+
+    if tavily_outcome.ok:
+        tavily_validated = _validate_and_rank_sources(tavily_outcome.sources, req.maxResults)
+        if tavily_validated:
+            report = build_bengali_report(req.diseaseName, crop, req.confidence, False, tavily_validated)
+            return DiseaseResearchResponse(
+                researchStatus="COMPLETED",
+                analysisId=req.analysisId,
+                diseaseName=req.diseaseName,
+                cropName=crop,
+                isHealthy=False,
+                lowConfidenceWarning=low_conf,
+                queriesUsed=queries,
+                sources=tavily_validated,
+                bengaliReport=report,
+                seleniumVersion=sel_ver,
+                browserInfo=browser_info,
+                searchProvidersAttempted=providers_attempted,
+                successfulProvider="tavily",
+                fallbackUsed=True,
+                fallbackReason=fallback_reason,
+                sourceCount=len(tavily_outcome.sources),
+                validatedSourceCount=len(tavily_validated),
+            )
+
+    if tavily_outcome.reason == "zero_results" or (tavily_outcome.ok and not tavily_outcome.sources):
+        insufficient_report = build_bengali_report(req.diseaseName, crop, req.confidence, False, [])
+        return DiseaseResearchResponse(
+            researchStatus="INSUFFICIENT_EVIDENCE",
             analysisId=req.analysisId,
             diseaseName=req.diseaseName,
             cropName=crop,
@@ -325,24 +429,44 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             lowConfidenceWarning=low_conf,
             queriesUsed=queries,
             sources=[],
-            bengaliReport=None,
-            errorCode=err_code,
-            errorMessage=msg,
+            bengaliReport=insufficient_report,
+            errorCode="INSUFFICIENT_EVIDENCE",
+            errorMessage="Neither Selenium Google Search nor Tavily returned usable agricultural sources.",
             seleniumVersion=sel_ver,
             browserInfo=browser_info,
+            searchProvidersAttempted=providers_attempted,
+            successfulProvider=None,
+            fallbackUsed=True,
+            fallbackReason=fallback_reason,
+            sourceCount=0,
+            validatedSourceCount=0,
         )
 
-    report = build_bengali_report(req.diseaseName, crop, req.confidence, False, sources)
+    final_status = "BLOCKED" if status == "BLOCKED" and tavily_outcome.reason == "missing_api_key" else (
+        "BLOCKED" if status == "BLOCKED" else "FAILED"
+    )
+    msg = (
+        f"Primary Google Search ({fallback_reason}) and Tavily fallback ({tavily_outcome.reason}) "
+        "could not collect verified agricultural sources. Disease prediction remains valid."
+    )
     return DiseaseResearchResponse(
-        researchStatus="COMPLETED",
+        researchStatus=final_status,
         analysisId=req.analysisId,
         diseaseName=req.diseaseName,
         cropName=crop,
         isHealthy=False,
         lowConfidenceWarning=low_conf,
         queriesUsed=queries,
-        sources=sources,
-        bengaliReport=report,
+        sources=[],
+        bengaliReport=None,
+        errorCode=f"{fallback_reason}+TAVILY_{tavily_outcome.reason.upper()}",
+        errorMessage=msg,
         seleniumVersion=sel_ver,
         browserInfo=browser_info,
+        searchProvidersAttempted=providers_attempted,
+        successfulProvider=None,
+        fallbackUsed=True,
+        fallbackReason=fallback_reason,
+        sourceCount=0,
+        validatedSourceCount=0,
     )

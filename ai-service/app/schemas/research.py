@@ -23,6 +23,7 @@ class ResearchSource(BaseModel):
     extractedSummary: str | None = None
     authoritativeTier: Literal["BANGLADESH_GOV_RESEARCH", "INTERNATIONAL_AGRI", "ACADEMIC", "GENERAL"]
     retrievedAt: str
+    provider: str = "google_selenium"
 
 
 class BengaliResearchReport(BaseModel):
@@ -32,10 +33,17 @@ class BengaliResearchReport(BaseModel):
     preventionBn: str
     cautionBn: str
     evidenceNoticeBn: str
+    overviewBn: str | None = None
+    causesBn: str | None = None
+    spreadBn: str | None = None
+    damageBn: str | None = None
+    immediateActionBn: str | None = None
+    whenToConsultBn: str | None = None
+    referencesBn: str | None = None
 
 
 class DiseaseResearchResponse(BaseModel):
-    researchStatus: Literal["COMPLETED", "BLOCKED", "FAILED", "SKIPPED_HEALTHY"]
+    researchStatus: Literal["COMPLETED", "BLOCKED", "FAILED", "SKIPPED_HEALTHY", "INSUFFICIENT_EVIDENCE"]
     analysisId: str
     diseaseName: str
     cropName: str | None = None
@@ -48,4 +56,10 @@ class DiseaseResearchResponse(BaseModel):
     errorMessage: str | None = None
     seleniumVersion: str | None = None
     browserInfo: str | None = None
+    searchProvidersAttempted: list[str] = Field(default_factory=list)
+    successfulProvider: str | None = None
+    fallbackUsed: bool = False
+    fallbackReason: str | None = None
+    sourceCount: int = 0
+    validatedSourceCount: int = 0
     retrievedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

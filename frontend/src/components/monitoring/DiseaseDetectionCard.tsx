@@ -16,13 +16,21 @@ export interface ResearchSourceItem {
   extractedSummary?: string;
   authoritativeTier?: string;
   retrievedAt?: string;
+  provider?: string;
 }
 
 export interface BengaliResearchReportItem {
   summaryBn?: string;
+  overviewBn?: string;
   symptomsBn?: string;
+  causesBn?: string;
+  spreadBn?: string;
+  damageBn?: string;
+  immediateActionBn?: string;
   managementBn?: string;
   preventionBn?: string;
+  whenToConsultBn?: string;
+  referencesBn?: string;
   cautionBn?: string;
   evidenceNoticeBn?: string;
 }
@@ -89,6 +97,8 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
     ? (researchSnapshot?.sources as ResearchSourceItem[])
     : [];
   const lowConfWarning = Boolean(researchSnapshot?.lowConfidenceWarning);
+  const successfulProvider = researchSnapshot?.successfulProvider ? String(researchSnapshot.successfulProvider) : null;
+  const fallbackUsed = Boolean(researchSnapshot?.fallbackUsed);
 
   return (
     <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 space-y-3">
@@ -241,17 +251,36 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
               </p>
             )}
 
-            {(researchStatus === 'COMPLETED' || researchStatus === 'SKIPPED_HEALTHY') && bengaliReport && (
+            {(researchStatus === 'COMPLETED' || researchStatus === 'SKIPPED_HEALTHY' || researchStatus === 'INSUFFICIENT_EVIDENCE') && bengaliReport && (
               <div className="space-y-2 text-xs text-on-surface">
+                {successfulProvider && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-on-surface-variant">
+                    <span className="px-2 py-0.5 rounded bg-surface-container font-semibold">
+                      Source Provider: {successfulProvider === 'tavily' ? 'Tavily Search' : 'Google Selenium'}
+                    </span>
+                    {fallbackUsed && (
+                      <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold">
+                        Fallback Active
+                      </span>
+                    )}
+                  </div>
+                )}
                 {lowConfWarning && (
                   <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
                     কম আত্মবিশ্বাস সতর্কতা: মাঠ পর্যায়ে কৃষি কর্মকর্তার সাথে যাচাই করুন।
                   </div>
                 )}
                 {bengaliReport.summaryBn && <p className="font-semibold leading-relaxed">{bengaliReport.summaryBn}</p>}
-                {bengaliReport.symptomsBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>লক্ষণ ও তথ্য:</strong> {bengaliReport.symptomsBn}</p>}
-                {bengaliReport.managementBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>ব্যবস্থাপনা:</strong> {bengaliReport.managementBn}</p>}
+                {bengaliReport.overviewBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>রোগের পরিচিতি:</strong> {bengaliReport.overviewBn}</p>}
+                {bengaliReport.symptomsBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>লক্ষণ:</strong> {bengaliReport.symptomsBn}</p>}
+                {bengaliReport.causesBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>কারণ:</strong> {bengaliReport.causesBn}</p>}
+                {bengaliReport.spreadBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>রোগ ছড়ানোর উপায়:</strong> {bengaliReport.spreadBn}</p>}
+                {bengaliReport.damageBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>সম্ভাব্য ক্ষতি:</strong> {bengaliReport.damageBn}</p>}
+                {bengaliReport.immediateActionBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>তাৎক্ষণিক করণীয়:</strong> {bengaliReport.immediateActionBn}</p>}
                 {bengaliReport.preventionBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>প্রতিরোধ:</strong> {bengaliReport.preventionBn}</p>}
+                {bengaliReport.managementBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>চিকিৎসা ও ব্যবস্থাপনা:</strong> {bengaliReport.managementBn}</p>}
+                {bengaliReport.whenToConsultBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>কখন কৃষি কর্মকর্তার পরামর্শ প্রয়োজন:</strong> {bengaliReport.whenToConsultBn}</p>}
+                {bengaliReport.referencesBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>তথ্যসূত্র:</strong> {bengaliReport.referencesBn}</p>}
                 {bengaliReport.cautionBn && <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed"><strong>সতর্কতা:</strong> {bengaliReport.cautionBn}</p>}
 
                 {researchSources.length > 0 && (

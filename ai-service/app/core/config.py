@@ -23,6 +23,8 @@ class Settings:
     MAX_IMAGE_PIXELS: int = int(os.getenv("AGROAI_MAX_IMAGE_PIXELS", "40000000"))
     MIN_IMAGE_SIDE: int = int(os.getenv("AGROAI_MIN_IMAGE_SIDE", "64"))
     MAX_IMAGE_SIDE: int = int(os.getenv("AGROAI_MAX_IMAGE_SIDE", "10000"))
+    TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
+    TAVILY_TIMEOUT_SEC: float = float(os.getenv("AGROAI_TAVILY_TIMEOUT_SEC", "15.0"))
 
 
 settings = Settings()

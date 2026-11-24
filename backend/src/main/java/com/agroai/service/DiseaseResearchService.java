@@ -152,6 +152,12 @@ public class DiseaseResearchService {
             report.put("errorMessage", aiResp.get("errorMessage"));
             report.put("seleniumVersion", aiResp.get("seleniumVersion"));
             report.put("browserInfo", aiResp.get("browserInfo"));
+            report.put("searchProvidersAttempted", aiResp.getOrDefault("searchProvidersAttempted", List.of()));
+            report.put("successfulProvider", aiResp.get("successfulProvider"));
+            report.put("fallbackUsed", Boolean.TRUE.equals(aiResp.get("fallbackUsed")));
+            report.put("fallbackReason", aiResp.get("fallbackReason"));
+            report.put("sourceCount", aiResp.getOrDefault("sourceCount", 0));
+            report.put("validatedSourceCount", aiResp.getOrDefault("validatedSourceCount", 0));
             report.put("retrievedAt", aiResp.get("retrievedAt") != null ? String.valueOf(aiResp.get("retrievedAt")) : Instant.now().toString());
         } catch (Exception e) {
             log.warn("Disease research failed for analysis={} research={}: {}", analysisId, researchId, e.getMessage());
@@ -181,16 +187,22 @@ public class DiseaseResearchService {
             latest.put("researchStatus", status);
             latest.put("latestResearchId", researchId);
             if (completedReport != null) {
-                latest.put("researchReport", Map.of(
-                        "researchId", researchId,
-                        "researchStatus", status,
-                        "lowConfidenceWarning", Boolean.TRUE.equals(completedReport.get("lowConfidenceWarning")),
-                        "sources", completedReport.getOrDefault("sources", List.of()),
-                        "bengaliReport", completedReport.get("bengaliReport") != null ? completedReport.get("bengaliReport") : Map.of(),
-                        "errorCode", completedReport.get("errorCode") != null ? completedReport.get("errorCode") : "",
-                        "errorMessage", completedReport.get("errorMessage") != null ? completedReport.get("errorMessage") : "",
-                        "retrievedAt", completedReport.get("retrievedAt") != null ? completedReport.get("retrievedAt") : ""
-                ));
+                Map<String, Object> snapshot = new LinkedHashMap<>();
+                snapshot.put("researchId", researchId);
+                snapshot.put("researchStatus", status);
+                snapshot.put("lowConfidenceWarning", Boolean.TRUE.equals(completedReport.get("lowConfidenceWarning")));
+                snapshot.put("sources", completedReport.getOrDefault("sources", List.of()));
+                snapshot.put("bengaliReport", completedReport.get("bengaliReport") != null ? completedReport.get("bengaliReport") : Map.of());
+                snapshot.put("errorCode", completedReport.get("errorCode") != null ? completedReport.get("errorCode") : "");
+                snapshot.put("errorMessage", completedReport.get("errorMessage") != null ? completedReport.get("errorMessage") : "");
+                snapshot.put("searchProvidersAttempted", completedReport.getOrDefault("searchProvidersAttempted", List.of()));
+                snapshot.put("successfulProvider", completedReport.get("successfulProvider") != null ? completedReport.get("successfulProvider") : "");
+                snapshot.put("fallbackUsed", Boolean.TRUE.equals(completedReport.get("fallbackUsed")));
+                snapshot.put("fallbackReason", completedReport.get("fallbackReason") != null ? completedReport.get("fallbackReason") : "");
+                snapshot.put("sourceCount", completedReport.getOrDefault("sourceCount", 0));
+                snapshot.put("validatedSourceCount", completedReport.getOrDefault("validatedSourceCount", 0));
+                snapshot.put("retrievedAt", completedReport.get("retrievedAt") != null ? completedReport.get("retrievedAt") : "");
+                latest.put("researchReport", snapshot);
             }
             latest.put("updatedAt", Instant.now().toString());
             latest.put("updatedAtEpochMs", Instant.now().toEpochMilli());
