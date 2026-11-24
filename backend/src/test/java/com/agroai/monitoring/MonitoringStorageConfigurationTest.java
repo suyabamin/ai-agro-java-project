@@ -28,6 +28,18 @@ class MonitoringStorageConfigurationTest {
     }
 
     @Test
+    void localProviderIsAvailableInDefaultNonProdProfileWhenSelected() {
+        runner.withPropertyValues("agroai.storage.provider=local")
+                .run(context -> assertThat(context).hasSingleBean(ImageStorage.class));
+    }
+
+    @Test
+    void productionProfileRejectsLocalStorageEvenIfRequested() {
+        runner.withPropertyValues("spring.profiles.active=prod", "agroai.storage.provider=local")
+                .run(context -> assertThat(context).doesNotHaveBean(ImageStorage.class));
+    }
+
+    @Test
     void gcsProviderFailsClosedWhenBucketNameIsMissing() {
         runner.withPropertyValues("spring.profiles.active=prod", "agroai.storage.provider=gcs")
                 .run(context -> assertThat(context).hasFailed());

@@ -17,7 +17,7 @@ import java.nio.file.Path;
 @Configuration
 public class MonitoringStorageConfiguration {
     @Bean
-    @Profile({"dev", "test"})
+    @Profile("!prod")
     @ConditionalOnProperty(name = "agroai.storage.provider", havingValue = "local")
     public ImageStorage localDevelopmentImageStorage(
             @Value("${agroai.storage.local-dir:${java.io.tmpdir}/agroai-images}") String root) throws IOException {

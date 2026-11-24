@@ -20,6 +20,7 @@ agroai:
     inference-timeout-ms: 20000
     service-key: "${AGROAI_AI_SERVICE_KEY:agroai-local-dev-key-2026}"
   storage:
+    provider: "${AGROAI_STORAGE_PROVIDER:local}"
     local-dir: "${AGROAI_LOCAL_IMAGE_DIR:${java.io.tmpdir}/agroai-images}"
   monitoring:
     max-image-bytes: 8388608

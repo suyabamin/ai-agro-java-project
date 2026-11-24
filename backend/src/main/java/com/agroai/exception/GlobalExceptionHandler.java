@@ -135,8 +135,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MonitoringServiceUnavailableException.class)
     public ResponseEntity<ApiResponse<Void>> handleMonitoringServiceUnavailable(MonitoringServiceUnavailableException ex) {
         log.warn("Monitoring dependency unavailable: {}", ex.getMessage());
+        String detail = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+        String safeMessage;
+        if (detail.contains("storage") || detail.contains("provider")) {
+            safeMessage = "Image storage is currently unavailable. Please verify storage provider configuration.";
+        } else if (detail.contains("ai") || detail.contains("model") || detail.contains("inference")) {
+            safeMessage = "Disease inference service is currently unavailable.";
+        } else {
+            safeMessage = "Monitoring storage or processing is currently unavailable.";
+        }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponse.failure("Monitoring storage or processing is currently unavailable."));
+                .body(ApiResponse.failure(safeMessage));
     }
 
     @ExceptionHandler(UnauthorizedResourceAccessException.class)
