@@ -1,0 +1,109 @@
+{
+  "model": "Su 0.1",
+  "source": "crop_disease_model_package\\crop_disease_model.keras",
+  "tflite": "assets\\model\\crop_disease_model.tflite",
+  "tensorflow_version": "2.20.0",
+  "input_shape": [
+    1,
+    224,
+    224,
+    3
+  ],
+  "input_dtype": "float32",
+  "input_pixel_range": [
+    0,
+    255
+  ],
+  "embedded_preprocessing": {
+    "rescaling": "multiply by 1/255",
+    "normalization_layer": {
+      "name": "EfficientNetB0 normalization_1",
+      "mean": [
+        0.48500001430511475,
+        0.4560000002384186,
+        0.4059999883174896
+      ],
+      "variance": [
+        0.2290000021457672,
+        0.2240000069141388,
+        0.22499999403953552
+      ]
+    }
+  },
+  "application_resize": "EXIF orientation, then bilinear resize to 224x224",
+  "output_shape": [
+    1,
+    94
+  ],
+  "output_dtype": "float32",
+  "output_interpretation": "94-way softmax; index maps directly to class_names.json",
+  "class_count": 94,
+  "selected_quantization": "float32",
+  "selected_model_size_bytes": 16523924,
+  "fp16_model_size_bytes": 8329232,
+  "fp32_synthetic_probe_parity": [
+    {
+      "probe": "black",
+      "keras_class_index": 36,
+      "tflite_class_index": 36,
+      "class_matches": true,
+      "keras_confidence": 0.10185634344816208,
+      "tflite_confidence": 0.1019490659236908,
+      "confidence_delta": 9.272247552871704e-05,
+      "max_absolute_output_delta": 0.0001351386308670044
+    },
+    {
+      "probe": "mid-gray",
+      "keras_class_index": 81,
+      "tflite_class_index": 81,
+      "class_matches": true,
+      "keras_confidence": 0.020200513303279877,
+      "tflite_confidence": 0.020200196653604507,
+      "confidence_delta": 3.166496753692627e-07,
+      "max_absolute_output_delta": 3.166496753692627e-07
+    },
+    {
+      "probe": "seeded-rgb",
+      "keras_class_index": 90,
+      "tflite_class_index": 90,
+      "class_matches": true,
+      "keras_confidence": 0.9999892711639404,
+      "tflite_confidence": 0.9999892711639404,
+      "confidence_delta": 0.0,
+      "max_absolute_output_delta": 5.411493475548923e-11
+    }
+  ],
+  "fp16_synthetic_probe_parity": [
+    {
+      "probe": "black",
+      "keras_class_index": 36,
+      "tflite_class_index": 36,
+      "class_matches": true,
+      "keras_confidence": 0.10185634344816208,
+      "tflite_confidence": 0.10211820900440216,
+      "confidence_delta": 0.0002618655562400818,
+      "max_absolute_output_delta": 0.0019545555114746094
+    },
+    {
+      "probe": "mid-gray",
+      "keras_class_index": 81,
+      "tflite_class_index": 81,
+      "class_matches": true,
+      "keras_confidence": 0.020200513303279877,
+      "tflite_confidence": 0.020241916179656982,
+      "confidence_delta": 4.140287637710571e-05,
+      "max_absolute_output_delta": 7.844623178243637e-05
+    },
+    {
+      "probe": "seeded-rgb",
+      "keras_class_index": 90,
+      "tflite_class_index": 90,
+      "class_matches": true,
+      "keras_confidence": 0.9999892711639404,
+      "tflite_confidence": 0.9999892711639404,
+      "confidence_delta": 0.0,
+      "max_absolute_output_delta": 7.622929842909798e-08
+    }
+  ],
+  "validation_limit": "No original plant validation images or training resize policy are present in the workspace."
+}
