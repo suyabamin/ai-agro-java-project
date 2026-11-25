@@ -165,4 +165,32 @@ describe('Bilingual Disease Intelligence UI helpers', () => {
     expect(blocks[1].citationId).toBe('src-2');
     expect(blocks[1].isFallbackOnly).toBe(true);
   });
+
+  it('handles leading citations, missing citations, empty evidence, nested brackets, special chars, and malformed delimiters safely', () => {
+    expect(parseEvidenceBlocks(null)).toEqual([]);
+    expect(parseEvidenceBlocks(undefined)).toEqual([]);
+    expect(parseEvidenceBlocks('')).toEqual([]);
+    expect(parseEvidenceBlocks('  |  ||   ')).toEqual([]);
+
+    const complexRaw =
+      '[paper-1] পাতায় গাঢ় বাদামী দাগ [মূল উৎস (EN): Dark brown lesions [Fig 1]; DOI: 10.1016/j.cropro.2024.106612] | ' +
+      'উদ্ধৃতি ছাড়া তথ্য। [মূল উৎস (EN): Observation without citation.] | ' +
+      'অসমাপ্ত বন্ধনী [মূল উৎস (EN): Unclosed bracket test';
+
+    const blocks = parseEvidenceBlocks(complexRaw);
+    expect(blocks).toHaveLength(3);
+
+    expect(blocks[0].citationId).toBe('paper-1');
+    expect(blocks[0].bnText).toBe('পাতায় গাঢ় বাদামী দাগ');
+    expect(blocks[0].enText).toBe('Dark brown lesions [Fig 1]; DOI: 10.1016/j.cropro.2024.106612');
+    expect(blocks[0].isFallbackOnly).toBe(false);
+
+    expect(blocks[1].citationId).toBeNull();
+    expect(blocks[1].bnText).toBe('উদ্ধৃতি ছাড়া তথ্য।');
+    expect(blocks[1].enText).toBe('Observation without citation.');
+
+    // Malformed unclosed bracket does not crash or drop text
+    expect(blocks[2].citationId).toBeNull();
+    expect(blocks[2].bnText).toContain('অসমাপ্ত বন্ধনী');
+  });
 });

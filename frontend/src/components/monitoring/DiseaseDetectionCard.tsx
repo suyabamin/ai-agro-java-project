@@ -151,11 +151,11 @@ const EvidenceBlockList: React.FC<EvidenceBlockListProps> = ({
             className="p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 space-y-1.5"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="text-xs text-on-surface leading-relaxed flex-1 min-w-[180px]">
+              <p className="text-xs text-on-surface leading-relaxed flex-1 min-w-0 break-words">
                 {primaryText}
               </p>
               {blk.citationId && (
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0">
+                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0 max-w-full break-all">
                   {blk.citationId}
                 </span>
               )}
@@ -165,7 +165,7 @@ const EvidenceBlockList: React.FC<EvidenceBlockListProps> = ({
                 <summary className="cursor-pointer font-semibold text-primary hover:underline select-none">
                   {toggleLabel}
                 </summary>
-                <p className="mt-1 p-2 rounded bg-surface-container-lowest border border-outline-variant/20 font-normal leading-relaxed">
+                <p className="mt-1 p-2 rounded bg-surface-container-lowest border border-outline-variant/20 font-normal leading-relaxed break-words">
                   {blk.enText}
                 </p>
               </details>
@@ -725,11 +725,11 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                                 href={paper.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-bold text-primary hover:underline flex-1 min-w-[200px]"
+                                className="font-bold text-primary hover:underline flex-1 min-w-0 break-words"
                               >
                                 {paper.title}
                               </a>
-                              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant shrink-0">
+                              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant shrink-0 max-w-full break-words">
                                 {paper.sourceProvider}
                                 {paper.doiVerificationStatus && paper.doiVerificationStatus !== 'NOT_APPLICABLE'
                                   ? ` • ${ui.doiStatusLabel}: ${paper.doiVerificationStatus}`
@@ -738,16 +738,16 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                             </div>
                             <div className="text-[11px] text-on-surface-variant flex flex-wrap gap-x-3 gap-y-0.5">
                               {paper.authors && paper.authors.length > 0 && (
-                                <span><strong>{ui.authorsLabel}:</strong> {paper.authors.slice(0, 3).join(', ')}</span>
+                                <span className="break-words"><strong>{ui.authorsLabel}:</strong> {paper.authors.slice(0, 3).join(', ')}</span>
                               )}
                               {paper.publicationYear && (
                                 <span><strong>{ui.yearLabel}:</strong> {paper.publicationYear}</span>
                               )}
                               {paper.journal && (
-                                <span><strong>{ui.journalLabel}:</strong> {paper.journal}</span>
+                                <span className="break-words"><strong>{ui.journalLabel}:</strong> {paper.journal}</span>
                               )}
                               {paper.doi && (
-                                <span className="font-mono"><strong>{ui.doiLabel}:</strong> {paper.doi}</span>
+                                <span className="font-mono break-all"><strong>{ui.doiLabel}:</strong> {paper.doi}</span>
                               )}
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-[10px]">
@@ -771,7 +771,7 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                                 <summary className="cursor-pointer font-semibold text-primary hover:underline select-none">
                                   {ui.expandAbstract}
                                 </summary>
-                                <p className="mt-1 p-2 rounded bg-surface-container-lowest border border-outline-variant/20 leading-relaxed">
+                                <p className="mt-1 p-2 rounded bg-surface-container-lowest border border-outline-variant/20 leading-relaxed break-words">
                                   {paper.abstract}
                                 </p>
                               </details>
@@ -808,7 +808,7 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                                 href={src.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-primary font-semibold hover:underline truncate max-w-[320px]"
+                                className="text-primary font-semibold hover:underline truncate max-w-full sm:max-w-[320px]"
                               >
                                 {src.title || src.domain}
                               </a>

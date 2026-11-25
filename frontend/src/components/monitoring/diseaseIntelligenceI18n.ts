@@ -101,8 +101,13 @@ export function parseEvidenceBlocks(rawText: string | undefined | null): ParsedE
     } else {
       const citeEndMatch = working.match(/^(.*?)\s*\[([a-zA-Z0-9_.:-]+)\]\s*$/);
       if (citeEndMatch) {
-        working = citeEndMatch[1].trim();
-        citationId = citeEndMatch[2];
+        const prefix = citeEndMatch[1];
+        const openCount = (prefix.match(/\[/g) || []).length;
+        const closeCount = (prefix.match(/\]/g) || []).length;
+        if (openCount === closeCount) {
+          working = prefix.trim();
+          citationId = citeEndMatch[2];
+        }
       }
     }
 
