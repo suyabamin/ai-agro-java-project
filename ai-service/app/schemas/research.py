@@ -13,6 +13,7 @@ class DiseaseResearchRequest(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=100)
     isHealthy: bool | None = None
     maxResults: int = Field(default=5, ge=1, le=8)
+    telemetryContext: dict[str, Any] | None = None
 
 
 class ResearchSource(BaseModel):
@@ -75,6 +76,31 @@ class BengaliResearchReport(BaseModel):
     referencesBn: str | None = None
 
 
+class AdvisoryActionItem(BaseModel):
+    priority: Literal["IMMEDIATE", "SHORT_TERM", "PREVENTIVE"]
+    titleEn: str
+    titleBn: str
+    detailEn: str
+    detailBn: str
+    citationIds: list[str] = Field(default_factory=list)
+
+
+class AdvisoryPayload(BaseModel):
+    advisoryStatus: Literal["READY", "LOW_CONFIDENCE_CAUTION", "INSUFFICIENT_EVIDENCE", "HEALTHY_MONITORING"]
+    severityLevel: Literal["LOW", "MODERATE", "HIGH", "UNKNOWN"]
+    confidenceBand: Literal["HIGH", "MODERATE", "LOW", "UNKNOWN"]
+    evidenceQuality: Literal["HIGH", "MODERATE", "LIMITED", "INSUFFICIENT"]
+    escalationRequired: bool = False
+    escalationReasonEn: str | None = None
+    escalationReasonBn: str | None = None
+    actionableSteps: list[AdvisoryActionItem] = Field(default_factory=list)
+    telemetryContextNotes: list[str] = Field(default_factory=list)
+    citedPaperIds: list[str] = Field(default_factory=list)
+    citedSourceDomains: list[str] = Field(default_factory=list)
+    disclaimerEn: str
+    disclaimerBn: str
+
+
 class DiseaseResearchResponse(BaseModel):
     researchStatus: Literal["COMPLETED", "BLOCKED", "FAILED", "SKIPPED_HEALTHY", "INSUFFICIENT_EVIDENCE"]
     analysisId: str
@@ -87,6 +113,7 @@ class DiseaseResearchResponse(BaseModel):
     sourceReferences: list[ResearchSource] = Field(default_factory=list)
     researchPapers: list[ResearchPaper] = Field(default_factory=list)
     bengaliReport: BengaliResearchReport | None = None
+    advisory: AdvisoryPayload | None = None
     errorCode: str | None = None
     errorMessage: str | None = None
     seleniumVersion: str | None = None

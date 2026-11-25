@@ -294,6 +294,45 @@ public class AgriculturalAnalysisService {
         return new CursorPage<>(agriOnly, raw.nextCursor(), raw.hasNext());
     }
 
+    public Map<String, Object> getFieldIntelligence(String farmId, String fieldId, String uid) {
+        Field authorizedField = authorization.requireReadAccess(farmId, fieldId, uid);
+        String resolvedFieldId = authorizedField != null && authorizedField.getFieldId() != null
+                ? authorizedField.getFieldId()
+                : fieldId;
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("farmId", farmId);
+        summary.put("fieldId", resolvedFieldId);
+        summary.put("cropType", authorizedField != null && authorizedField.getCropType() != null
+                ? authorizedField.getCropType().name() : null);
+
+        CursorPage<Map<String, Object>> page = repository.page(
+                "ai_analysis_results", farmId, resolvedFieldId, null, 20, Map.of(), null, null);
+        Map<String, Object> latestTabular = null;
+        Map<String, Object> latestDisease = null;
+        if (page != null && page.items() != null) {
+            for (Map<String, Object> item : page.items()) {
+                Object type = item.get("analysisType");
+                if (DiseaseAnalysisService.ANALYSIS_TYPE.equals(type)) {
+                    if (latestDisease == null) latestDisease = item;
+                } else if (latestTabular == null) {
+                    latestTabular = item;
+                }
+            }
+        }
+        summary.put("latestAgriculturalAnalysis", latestTabular);
+        summary.put("latestDiseaseAnalysis", latestDisease);
+        summary.put("advisory", latestDisease != null && latestDisease.get("researchReport") instanceof Map<?, ?> rr
+                ? rr.get("advisory")
+                : null);
+
+        CursorPage<Map<String, Object>> irrPage = repository.page(
+                "irrigation_plans", farmId, resolvedFieldId, null, 1, Map.of(), null, null);
+        summary.put("latestIrrigationPlan", irrPage != null && irrPage.items() != null && !irrPage.items().isEmpty()
+                ? irrPage.items().get(0) : null);
+        return summary;
+    }
+
     public Map<String, Map<String, Object>> getLatestForFarm(String farmId, String uid) {
         authorization.requireFarmReadAccess(farmId, uid);
         Map<String, Map<String, Object>> results = new LinkedHashMap<>();

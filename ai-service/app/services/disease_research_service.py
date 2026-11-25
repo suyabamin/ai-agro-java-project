@@ -510,6 +510,10 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
 
     from app.core.config import settings
     from app.schemas.research import ResearchPaper
+    from app.services.advisory_synthesizer import (
+        synthesize_advisory,
+        synthesize_evidence_bengali_report,
+    )
     from app.services.providers import (
         BangladeshAgriProvider,
         CrossrefProvider,
@@ -522,7 +526,25 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
     low_conf = req.confidence is not None and req.confidence < _LOW_CONFIDENCE_THRESHOLD
 
     if healthy:
-        report = build_bengali_report(req.diseaseName, crop, req.confidence, True, [])
+        report = synthesize_evidence_bengali_report(
+            disease_name=req.diseaseName,
+            crop_name=crop,
+            confidence=req.confidence,
+            is_healthy=True,
+            papers=[],
+            sources=[],
+            evidence_quality="INSUFFICIENT",
+        )
+        advisory = synthesize_advisory(
+            disease_name=req.diseaseName,
+            crop_name=crop,
+            confidence=req.confidence,
+            is_healthy=True,
+            papers=[],
+            sources=[],
+            evidence_quality="INSUFFICIENT",
+            telemetry_context=req.telemetryContext,
+        )
         return DiseaseResearchResponse(
             researchStatus="SKIPPED_HEALTHY",
             analysisId=req.analysisId,
@@ -535,6 +557,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             sourceReferences=[],
             researchPapers=[],
             bengaliReport=report,
+            advisory=advisory,
             searchProvidersAttempted=[],
             providersAttempted=[],
             successfulProviders=[],
@@ -554,7 +577,18 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
         with _CACHE_LOCK:
             cached = _RESEARCH_CACHE.get(cache_key)
             if cached and (now_mono - cached[0]) < settings.RESEARCH_CACHE_TTL_SEC:
-                return cached[1].model_copy(update={"analysisId": req.analysisId})
+                cached_resp = cached[1]
+                fresh_adv = synthesize_advisory(
+                    disease_name=req.diseaseName,
+                    crop_name=crop,
+                    confidence=req.confidence,
+                    is_healthy=False,
+                    papers=cached_resp.researchPapers,
+                    sources=cached_resp.sources,
+                    evidence_quality=cached_resp.evidenceQuality,
+                    telemetry_context=req.telemetryContext,
+                )
+                return cached_resp.model_copy(update={"analysisId": req.analysisId, "advisory": fresh_adv})
 
     queries = build_google_queries(req.diseaseName, crop)
     academic_query = f"{format_readable_disease(req.diseaseName)} {crop} crop disease management"
@@ -634,7 +668,25 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             and tavily_reason in ("zero_results", "missing_api_key", "")
         )
         if all_zero or (oa_out.reason == "zero_results" or s2_out.reason == "zero_results"):
-            insufficient_report = build_bengali_report(req.diseaseName, crop, req.confidence, False, [])
+            insufficient_report = synthesize_evidence_bengali_report(
+                disease_name=req.diseaseName,
+                crop_name=crop,
+                confidence=req.confidence,
+                is_healthy=False,
+                papers=[],
+                sources=[],
+                evidence_quality="INSUFFICIENT",
+            )
+            insufficient_adv = synthesize_advisory(
+                disease_name=req.diseaseName,
+                crop_name=crop,
+                confidence=req.confidence,
+                is_healthy=False,
+                papers=[],
+                sources=[],
+                evidence_quality="INSUFFICIENT",
+                telemetry_context=req.telemetryContext,
+            )
             return DiseaseResearchResponse(
                 researchStatus="INSUFFICIENT_EVIDENCE",
                 analysisId=req.analysisId,
@@ -647,6 +699,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
                 sourceReferences=[],
                 researchPapers=[],
                 bengaliReport=insufficient_report,
+                advisory=insufficient_adv,
                 errorCode="INSUFFICIENT_EVIDENCE",
                 errorMessage="No verified sources or academic papers matched this query across active providers.",
                 seleniumVersion=web_res["sel_ver"],
@@ -700,7 +753,25 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             bamisStatus=bamis_status,
         )
 
-    report = build_bengali_report(req.diseaseName, crop, req.confidence, False, combined_sources)
+    report = synthesize_evidence_bengali_report(
+        disease_name=req.diseaseName,
+        crop_name=crop,
+        confidence=req.confidence,
+        is_healthy=False,
+        papers=ranked_papers,
+        sources=combined_sources,
+        evidence_quality=evidence_quality,
+    )
+    advisory = synthesize_advisory(
+        disease_name=req.diseaseName,
+        crop_name=crop,
+        confidence=req.confidence,
+        is_healthy=False,
+        papers=ranked_papers,
+        sources=combined_sources,
+        evidence_quality=evidence_quality,
+        telemetry_context=req.telemetryContext,
+    )
     primary_provider = web_res["successful_provider"] or (
         "openalex" if oa_out.ok else ("semantic_scholar" if s2_out.ok else None)
     )
@@ -716,6 +787,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
         sourceReferences=combined_sources,
         researchPapers=ranked_papers,
         bengaliReport=report,
+        advisory=advisory,
         seleniumVersion=web_res["sel_ver"],
         browserInfo=web_res["browser_info"],
         searchProvidersAttempted=web_res["attempted"],

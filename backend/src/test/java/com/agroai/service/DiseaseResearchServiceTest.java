@@ -61,6 +61,7 @@ class DiseaseResearchServiceTest {
         aiResearch.put("bamisStatus", Map.of("bamisApiAvailable", false));
         aiResearch.put("sources", List.of(Map.of("title", "BARI Potato", "url", "https://bari.gov.bd/potato", "domain", "bari.gov.bd", "provider", "tavily")));
         aiResearch.put("bengaliReport", Map.of("summaryBn", "আলু ফসলে প্রাথমিক তথ্য পাওয়া গেছে।"));
+        aiResearch.put("advisory", Map.of("advisoryStatus", "READY", "severityLevel", "HIGH", "escalationRequired", false));
         when(ai.researchDisease(anyMap())).thenReturn(aiResearch);
 
         DiseaseResearchService service = new DiseaseResearchService(repository, authorization, ai);
@@ -72,6 +73,7 @@ class DiseaseResearchServiceTest {
         assertEquals("GOOGLE_CAPTCHA_BLOCKED", report.get("fallbackReason"));
         assertEquals("HIGH", report.get("evidenceQuality"));
         assertEquals(1, report.get("duplicateCount"));
+        assertNotNull(report.get("advisory"));
         assertEquals("COMPLETED", analysis.get("status")); // disease analysis stays COMPLETED
         assertEquals("COMPLETED", analysis.get("researchStatus"));
         assertNotNull(analysis.get("researchReport"));
@@ -80,6 +82,7 @@ class DiseaseResearchServiceTest {
         assertEquals("tavily", snap.get("successfulProvider"));
         assertEquals(true, snap.get("fallbackUsed"));
         assertEquals("HIGH", snap.get("evidenceQuality"));
+        assertNotNull(snap.get("advisory"));
         verify(repository, atLeastOnce()).createWithActivity(eq(DiseaseResearchService.COLLECTION), anyString(), anyMap(), anyMap());
     }
 

@@ -394,6 +394,89 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                     </ul>
                   </div>
                 )}
+
+                {Boolean(researchSnapshot?.advisory) && (() => {
+                  const adv = researchSnapshot?.advisory as {
+                    advisoryStatus?: string;
+                    severityLevel?: string;
+                    confidenceBand?: string;
+                    escalationRequired?: boolean;
+                    escalationReasonBn?: string;
+                    escalationReasonEn?: string;
+                    telemetryContextNotes?: string[];
+                    actionableSteps?: Array<{
+                      priority?: string;
+                      titleEn?: string;
+                      titleBn?: string;
+                      detailEn?: string;
+                      detailBn?: string;
+                      citationIds?: string[];
+                    }>;
+                    disclaimerBn?: string;
+                  };
+                  const steps = Array.isArray(adv.actionableSteps) ? adv.actionableSteps : [];
+                  const tNotes = Array.isArray(adv.telemetryContextNotes) ? adv.telemetryContextNotes : [];
+                  return (
+                    <div className="pt-2.5 border-t border-outline-variant/20 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                          Evidence-Based Agronomic Advisory
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                          {adv.advisoryStatus && (
+                            <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-bold">
+                              {adv.advisoryStatus}
+                            </span>
+                          )}
+                          {adv.severityLevel && (
+                            <span className="px-2 py-0.5 rounded bg-surface-container text-on-surface">
+                              Severity: {adv.severityLevel}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {adv.escalationRequired && (adv.escalationReasonBn || adv.escalationReasonEn) && (
+                        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300">
+                          <strong>Agronomist Escalation:</strong> {adv.escalationReasonBn || adv.escalationReasonEn}
+                        </div>
+                      )}
+                      {tNotes.length > 0 && (
+                        <ul className="space-y-0.5 text-[10px] text-on-surface-variant list-disc list-inside">
+                          {tNotes.map((note, nIdx) => (
+                            <li key={nIdx}>{note}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {steps.length > 0 && (
+                        <div className="space-y-1.5">
+                          {steps.map((step, idx) => (
+                            <div key={idx} className="p-2 rounded-lg bg-surface-container border border-outline-variant/20 text-[11px] space-y-0.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold text-on-surface">
+                                  {step.titleBn || step.titleEn}
+                                </span>
+                                <span className="font-mono text-[10px] text-primary font-bold">
+                                  {step.priority}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-on-surface-variant">
+                                {step.detailBn || step.detailEn}
+                              </p>
+                              {Array.isArray(step.citationIds) && step.citationIds.length > 0 && (
+                                <div className="font-mono text-[9px] text-on-surface-variant">
+                                  Refs: {step.citationIds.join(', ')}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {adv.disclaimerBn && (
+                        <p className="text-[10px] text-on-surface-variant italic">{adv.disclaimerBn}</p>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

@@ -198,6 +198,14 @@ public class FieldMonitoringController {
         return ResponseEntity.ok(ApiResponse.success(response(agriculturalAnalysis.list(farmId, fieldId, user.getUid(), cursor, size), size), "Agricultural analyses retrieved"));
     }
 
+    @GetMapping("/intelligence")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getFieldIntelligence(@PathVariable String farmId,
+            @PathVariable String fieldId, @AuthenticationPrincipal FirebaseUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.success(
+                agriculturalAnalysis.getFieldIntelligence(farmId, fieldId, user.getUid()),
+                "Field agricultural intelligence retrieved"));
+    }
+
     @RequiresRevocationCheck
     @PostMapping("/irrigation-plans")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createIrrigationPlan(@PathVariable String farmId,

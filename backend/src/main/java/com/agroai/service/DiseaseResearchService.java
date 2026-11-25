@@ -139,6 +139,10 @@ public class DiseaseResearchService {
             if (report.get("confidence") != null) reqPayload.put("confidence", report.get("confidence"));
             if (report.get("isHealthy") != null) reqPayload.put("isHealthy", report.get("isHealthy"));
             reqPayload.put("maxResults", 5);
+            Map<String, Object> telemetryCtx = buildTelemetryContext(farmId, canonicalFieldId);
+            if (!telemetryCtx.isEmpty()) {
+                reqPayload.put("telemetryContext", telemetryCtx);
+            }
 
             Map<String, Object> aiResp = aiClient.researchDisease(reqPayload);
             String rStatus = String.valueOf(aiResp.getOrDefault("researchStatus", "FAILED"));
@@ -148,6 +152,7 @@ public class DiseaseResearchService {
             report.put("queriesUsed", aiResp.getOrDefault("queriesUsed", List.of()));
             report.put("sources", aiResp.getOrDefault("sources", List.of()));
             report.put("bengaliReport", aiResp.get("bengaliReport"));
+            report.put("advisory", aiResp.get("advisory"));
             report.put("errorCode", aiResp.get("errorCode"));
             report.put("errorMessage", aiResp.get("errorMessage"));
             report.put("seleniumVersion", aiResp.get("seleniumVersion"));
@@ -203,6 +208,9 @@ public class DiseaseResearchService {
                 snapshot.put("lowConfidenceWarning", Boolean.TRUE.equals(completedReport.get("lowConfidenceWarning")));
                 snapshot.put("sources", completedReport.getOrDefault("sources", List.of()));
                 snapshot.put("bengaliReport", completedReport.get("bengaliReport") != null ? completedReport.get("bengaliReport") : Map.of());
+                if (completedReport.get("advisory") != null) {
+                    snapshot.put("advisory", completedReport.get("advisory"));
+                }
                 snapshot.put("errorCode", completedReport.get("errorCode") != null ? completedReport.get("errorCode") : "");
                 snapshot.put("errorMessage", completedReport.get("errorMessage") != null ? completedReport.get("errorMessage") : "");
                 snapshot.put("searchProvidersAttempted", completedReport.getOrDefault("searchProvidersAttempted", List.of()));
@@ -239,6 +247,44 @@ public class DiseaseResearchService {
                 ? authorizedField.getFieldId()
                 : fieldId;
         return listRawForAnalysis(farmId, canonicalFieldId, analysisId);
+    }
+
+    private Map<String, Object> buildTelemetryContext(String farmId, String canonicalFieldId) {
+        Map<String, Object> ctx = new LinkedHashMap<>();
+        try {
+            CursorPage<Map<String, Object>> agriPage = repository.page(
+                    "ai_analysis_results", farmId, canonicalFieldId, null, 5,
+                    Map.of("analysisType", "AGRICULTURAL_EVIDENCE_SUMMARY"), null, null);
+            if (agriPage != null && agriPage.items() != null) {
+                for (Map<String, Object> item : agriPage.items()) {
+                    if ("COMPLETED".equals(item.get("status"))) {
+                        if (item.get("predictedFieldStatus") != null) {
+                            ctx.put("predictedFieldStatus", item.get("predictedFieldStatus"));
+                        }
+                        if (item.get("predictedWaterNeed") != null) {
+                            ctx.put("predictedWaterNeed", item.get("predictedWaterNeed"));
+                        }
+                        break;
+                    }
+                }
+            }
+            CursorPage<Map<String, Object>> telPage = repository.page(
+                    "soil_telemetry", farmId, canonicalFieldId, null, 10, Map.of(), null, null);
+            if (telPage != null && telPage.items() != null) {
+                for (Map<String, Object> t : telPage.items()) {
+                    if (!"VALID".equals(t.get("validationStatus"))) continue;
+                    String mType = String.valueOf(t.getOrDefault("measurementType", ""));
+                    Object raw = t.get("rawValue");
+                    if (!(raw instanceof Number)) continue;
+                    if ("SOIL_MOISTURE".equals(mType) && !ctx.containsKey("soilMoisture")) ctx.put("soilMoisture", raw);
+                    if ("HUMIDITY".equals(mType) && !ctx.containsKey("humidity")) ctx.put("humidity", raw);
+                    if ("PH".equals(mType) && !ctx.containsKey("soilPh")) ctx.put("soilPh", raw);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Could not build telemetry context for field {}: {}", canonicalFieldId, e.getMessage());
+        }
+        return ctx;
     }
 
     private List<Map<String, Object>> listRawForAnalysis(String farmId, String canonicalFieldId, String analysisId) {
