@@ -96,6 +96,11 @@ export const monitoringService = {
   async getDiseaseResearch(farmId: string, fieldId: string, analysisId: string) {
     return (await apiClient.get<ApiResponse<MonitoringRecord[]>>(`${root(farmId, fieldId)}/disease-analyses/${encodeURIComponent(analysisId)}/research`)).data;
   },
+  async listFieldResearch(farmId: string, fieldId: string, cursor?: string | null, size = 25) {
+    return (await apiClient.get<ApiResponse<MonitoringPage<MonitoringRecord>>>(`${root(farmId, fieldId)}/research`, {
+      params: { cursor: cursor || undefined, size },
+    })).data;
+  },
   async fieldIntelligence(farmId: string, fieldId: string) {
     return (await apiClient.get<ApiResponse<MonitoringRecord>>(`${root(farmId, fieldId)}/intelligence`)).data;
   },

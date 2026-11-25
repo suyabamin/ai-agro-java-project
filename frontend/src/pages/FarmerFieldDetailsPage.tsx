@@ -7,6 +7,8 @@ import type { Field } from '../types/field';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import { DiseaseDetectionCard, formatDiseaseLabel, parseConfidencePercent } from '../components/monitoring/DiseaseDetectionCard';
+import { UnifiedFieldIntelligencePanel } from '../components/monitoring/UnifiedFieldIntelligencePanel';
+import { FieldHistoryTabs } from '../components/monitoring/FieldHistoryTabs';
 
 function parseApiErrorMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
@@ -1217,6 +1219,9 @@ export const FarmerFieldDetailsPage: React.FC = () => {
               </div>
             )}
           </div>
+
+          <UnifiedFieldIntelligencePanel farmId={field.farmId} fieldId={field.fieldId} />
+          <FieldHistoryTabs farmId={field.farmId} fieldId={field.fieldId} />
         </>
       )}
     </div>

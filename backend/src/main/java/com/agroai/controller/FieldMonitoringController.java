@@ -176,6 +176,16 @@ public class FieldMonitoringController {
         return ResponseEntity.ok(ApiResponse.success(reports, "Disease research reports retrieved"));
     }
 
+    @GetMapping("/research")
+    public ResponseEntity<ApiResponse<CursorPageResponse<Map<String, Object>>>> listFieldResearch(@PathVariable String farmId,
+            @PathVariable String fieldId, @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size, @AuthenticationPrincipal FirebaseUserDetails user) {
+        CursorPage<Map<String, Object>> page = diseaseResearch != null
+                ? diseaseResearch.listForField(farmId, fieldId, user.getUid(), cursor, size)
+                : new CursorPage<>(List.of(), null, false);
+        return ResponseEntity.ok(ApiResponse.success(response(page, size), "Field research history retrieved"));
+    }
+
     @RequiresRevocationCheck
     @PostMapping("/agricultural-analyses")
     public ResponseEntity<ApiResponse<Map<String, Object>>> createAgriculturalAnalysis(@PathVariable String farmId,

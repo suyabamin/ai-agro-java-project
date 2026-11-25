@@ -14,6 +14,8 @@ import type { FieldAssignment } from '../types/assignment';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import { DiseaseDetectionCard, formatDiseaseLabel, parseConfidencePercent } from '../components/monitoring/DiseaseDetectionCard';
+import { UnifiedFieldIntelligencePanel } from '../components/monitoring/UnifiedFieldIntelligencePanel';
+import { FieldHistoryTabs } from '../components/monitoring/FieldHistoryTabs';
 import {
   buildFieldDecisionRow,
   extractTelemetry8Parameters,
@@ -1374,6 +1376,13 @@ export const FieldDetailsPage: React.FC = () => {
           )}
         </div>
       </section>
+
+      {activeFarm?.farmId && field?.fieldId && (
+        <section className="space-y-4">
+          <UnifiedFieldIntelligencePanel farmId={activeFarm.farmId} fieldId={field.fieldId} />
+          <FieldHistoryTabs farmId={activeFarm.farmId} fieldId={field.fieldId} />
+        </section>
+      )}
     </div>
   );
 };

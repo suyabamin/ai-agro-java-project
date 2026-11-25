@@ -6,6 +6,7 @@ import com.agroai.monitoring.MonitoringActivity;
 import com.agroai.monitoring.MonitoringAuthorizationService;
 import com.agroai.repository.CursorPage;
 import com.agroai.repository.FieldMonitoringRepository;
+import com.agroai.util.CursorPagination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -247,6 +248,17 @@ public class DiseaseResearchService {
                 ? authorizedField.getFieldId()
                 : fieldId;
         return listRawForAnalysis(farmId, canonicalFieldId, analysisId);
+    }
+
+    public CursorPage<Map<String, Object>> listForField(String farmId, String fieldId, String uid, String cursor, Integer size) {
+        Field authorizedField = authorization.requireReadAccess(farmId, fieldId, uid);
+        String canonicalFieldId = authorizedField != null && authorizedField.getFieldId() != null
+                ? authorizedField.getFieldId()
+                : fieldId;
+        int pageSize = CursorPagination.validatePageSize(size);
+        CursorPage<Map<String, Object>> page = repository.page(
+                COLLECTION, farmId, canonicalFieldId, CursorPagination.decode(cursor), pageSize, Map.of(), null, null);
+        return page != null ? page : new CursorPage<>(List.of(), null, false);
     }
 
     private Map<String, Object> buildTelemetryContext(String farmId, String canonicalFieldId) {

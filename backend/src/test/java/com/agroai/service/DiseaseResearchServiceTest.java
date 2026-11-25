@@ -154,4 +154,26 @@ class DiseaseResearchServiceTest {
         DiseaseResearchService service = new DiseaseResearchService(repository, authorization, ai);
         assertThrows(IllegalArgumentException.class, () -> service.triggerSyncForTest("farm-1", "f1", "analysis_3", "farmer-1"));
     }
+
+    @Test
+    void listsPaginatedResearchHistoryForAuthorizedField() {
+        FieldMonitoringRepository repository = mock(FieldMonitoringRepository.class);
+        MonitoringAuthorizationService authorization = mock(MonitoringAuthorizationService.class);
+        AiInferenceClient ai = mock(AiInferenceClient.class);
+
+        Field field = new Field();
+        field.setFieldId("farm-1--f1");
+        when(authorization.requireReadAccess("farm-1", "f1", "owner-1")).thenReturn(field);
+
+        Map<String, Object> r1 = Map.of("researchId", "research_1", "analysisId", "analysis_1", "researchStatus", "COMPLETED");
+        when(repository.page(eq(DiseaseResearchService.COLLECTION), eq("farm-1"), eq("farm-1--f1"), isNull(), eq(15), eq(Map.of()), isNull(), isNull()))
+                .thenReturn(new CursorPage<>(List.of(r1), "cursor_2", true));
+
+        DiseaseResearchService service = new DiseaseResearchService(repository, authorization, ai);
+        CursorPage<Map<String, Object>> page = service.listForField("farm-1", "f1", "owner-1", null, 15);
+        assertEquals(1, page.items().size());
+        assertTrue(page.hasNext());
+        assertEquals("cursor_2", page.nextCursor());
+        verify(authorization).requireReadAccess("farm-1", "f1", "owner-1");
+    }
 }

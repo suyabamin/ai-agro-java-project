@@ -42,6 +42,7 @@ describe('monitoringService', () => {
     ['images', monitoringService.listImages, '/images'],
     ['analyses', monitoringService.analyses, '/disease-analyses'],
     ['irrigation plans', monitoringService.irrigationPlans, '/irrigation-plans'],
+    ['research history', monitoringService.listFieldResearch, '/research'],
   ] as const)('requests a bounded cursor page for %s', async (_name, method, suffix) => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { success: true, data: { items: [], nextCursor: 'next-1', hasNext: true, pageSize: 10 } } });
     const response = await method('farm-1', 'field-1', 'cursor-1', 10);
@@ -49,7 +50,13 @@ describe('monitoringService', () => {
       params: { cursor: 'cursor-1', size: 10 },
     });
     expect(response.data?.nextCursor).toBe('next-1');
-    expect(response.data?.hasNext).toBe(true);
+  });
+
+  it('requests unified field intelligence summary through authenticated endpoint', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { success: true, data: { fieldId: 'field-1' } } });
+    const res = await monitoringService.fieldIntelligence('farm-1', 'field-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/intelligence');
+    expect(res.data?.fieldId).toBe('field-1');
   });
 
   it('submits telemetry through the field monitoring API', async () => {

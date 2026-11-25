@@ -10,6 +10,7 @@ from app.schemas.research import (
     ResearchPaper,
     ResearchSource,
 )
+from app.services.bengali_evidence_renderer import render_evidence_sentence_bn
 
 _SYMPTOM_KW = ("symptom", "lesion", "spot", "blight", "ring", "necrosis", "chlorosis", "mosaic", "wilt", "rot", "pustule")
 _CAUSE_KW = ("fungus", "fungi", "bacteria", "virus", "oomycete", "alternaria", "phytophthora", "pathogen", "causal", "caused by", "humidity", "moisture")
@@ -236,7 +237,11 @@ def synthesize_evidence_bengali_report(
     def _fmt_hits(hits: list[tuple[str, str]], fallback: str) -> str:
         if not hits:
             return fallback
-        return " | ".join(f"[{cite}] {txt}" for cite, txt in hits)
+        rendered = []
+        for cite, txt in hits:
+            bn_line, _ = render_evidence_sentence_bn(cite, txt)
+            rendered.append(bn_line or f"[{cite}] {txt}")
+        return " | ".join(rendered)
 
     ref_items: list[str] = []
     for cite, _txt in sym_hits + cause_hits + spread_hits + mgmt_hits:

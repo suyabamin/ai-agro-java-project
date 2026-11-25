@@ -303,8 +303,10 @@ public class AgriculturalAnalysisService {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("farmId", farmId);
         summary.put("fieldId", resolvedFieldId);
+        summary.put("fieldName", authorizedField != null ? authorizedField.getName() : null);
         summary.put("cropType", authorizedField != null && authorizedField.getCropType() != null
                 ? authorizedField.getCropType().name() : null);
+        summary.put("generatedAt", Instant.now().toString());
 
         CursorPage<Map<String, Object>> page = repository.page(
                 "ai_analysis_results", farmId, resolvedFieldId, null, 20, Map.of(), null, null);
@@ -326,10 +328,64 @@ public class AgriculturalAnalysisService {
                 ? rr.get("advisory")
                 : null);
 
+        Map<String, Object> latestTelemetryByType = new LinkedHashMap<>();
+        long staleCutoffMs = Instant.now().minusSeconds(24 * 60 * 60).toEpochMilli();
+        boolean anyStaleTelemetry = false;
+        CursorPage<Map<String, Object>> telPage = repository.page(
+                "soil_telemetry", farmId, resolvedFieldId, null, 25, Map.of(), null, null);
+        if (telPage != null && telPage.items() != null) {
+            for (Map<String, Object> t : telPage.items()) {
+                String mType = String.valueOf(t.getOrDefault("measurementType", ""));
+                if (mType.isBlank() || latestTelemetryByType.containsKey(mType)) continue;
+                Map<String, Object> entry = new LinkedHashMap<>(t);
+                long obsMs = t.get("observedAtEpochMs") instanceof Number n ? n.longValue() : 0L;
+                boolean isStale = obsMs > 0 && obsMs < staleCutoffMs;
+                if (isStale) anyStaleTelemetry = true;
+                entry.put("isStale", isStale);
+                latestTelemetryByType.put(mType, entry);
+            }
+        }
+        summary.put("latestTelemetry", latestTelemetryByType);
+        summary.put("hasStaleTelemetry", anyStaleTelemetry);
+
+        Map<String, Object> diseaseAvail = Map.of("available", false, "status", "MODEL_UNAVAILABLE");
+        if (aiClient != null) {
+            try {
+                Map<String, Object> availResp = aiClient.availability();
+                if (availResp != null) diseaseAvail = availResp;
+            } catch (Exception ignored) {
+                // Fail-closed availability
+            }
+        }
+        summary.put("diseaseAvailability", diseaseAvail);
+
         CursorPage<Map<String, Object>> irrPage = repository.page(
                 "irrigation_plans", farmId, resolvedFieldId, null, 1, Map.of(), null, null);
-        summary.put("latestIrrigationPlan", irrPage != null && irrPage.items() != null && !irrPage.items().isEmpty()
-                ? irrPage.items().get(0) : null);
+        Map<String, Object> latestIrrigation = irrPage != null && irrPage.items() != null && !irrPage.items().isEmpty()
+                ? irrPage.items().get(0) : null;
+        summary.put("latestIrrigationPlan", latestIrrigation);
+
+        List<String> summaryNotes = new ArrayList<>();
+        if (latestTabular != null && latestTabular.get("predictedFieldStatus") != null) {
+            summaryNotes.add("Agronomic status: " + latestTabular.get("predictedFieldStatus")
+                    + (latestTabular.get("predictedWaterNeed") != null ? " (Water Need: " + latestTabular.get("predictedWaterNeed") + ")" : ""));
+        } else {
+            summaryNotes.add("No completed tabular agronomic analysis recorded yet.");
+        }
+        if (latestDisease != null && "COMPLETED".equals(latestDisease.get("status"))) {
+            summaryNotes.add("Latest leaf inference: " + latestDisease.getOrDefault("diseaseName", latestDisease.get("predictedClass"))
+                    + " (Research: " + latestDisease.getOrDefault("researchStatus", "NOT_REQUESTED") + ")");
+        } else {
+            summaryNotes.add("No completed leaf disease inference yet (Engine: " + diseaseAvail.getOrDefault("status", "MODEL_UNAVAILABLE") + ").");
+        }
+        if (latestIrrigation != null) {
+            summaryNotes.add("Latest irrigation plan: " + latestIrrigation.getOrDefault("recommendationStatus", "UNKNOWN")
+                    + " (" + latestIrrigation.getOrDefault("status", "DRAFT") + ")");
+        }
+        if (anyStaleTelemetry) {
+            summaryNotes.add("One or more telemetry readings are older than 24 hours (marked stale).");
+        }
+        summary.put("intelligenceSummary", summaryNotes);
         return summary;
     }
 
