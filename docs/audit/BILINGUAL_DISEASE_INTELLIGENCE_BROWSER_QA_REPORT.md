@@ -47,11 +47,21 @@
 - **Reproduction:** `min-w-[180px]` / `min-w-[200px]` inside flex rows and `max-w-[320px]` on source links, plus unbreakable DOI strings (`paper.doi`), risked horizontal overflow on narrow mobile screens (`<= 375px`).
 - **Fix:** Replaced fixed `min-w-[180px]`/`min-w-[200px]` with `min-w-0 break-words`, added `break-all` on `paper.doi` and citation badges, added `break-words` on abstracts/authors/journals, and changed source link width to `max-w-full sm:max-w-[320px]`.
 
+### Defect 3 — Narrow Fragmented Evidence Paragraphs Under Section D (`Causes & Spread`)
+- **File:** `frontend/src/components/monitoring/DiseaseDetectionCard.tsx`
+- **Root Cause:** In `EvidenceBlockList`, `<p className="... flex-1 min-w-0">` sat in a side-by-side `flex` row with a `shrink-0` citation/DOI badge. In CSS Flexbox, a `flex-1 min-w-0` child shrinks toward `0px` before a `shrink-0` sibling wraps, squeezing Bengali/English paragraphs into narrow vertical columns—especially inside Section D's two-column grid (`md:grid-cols-2`, where grid columns also lacked `min-w-0`). The same flex-squeeze pattern affected `researchPapers` titles next to provider/DOI badges.
+- **Fix:**
+  - Moved the citation/DOI badge row above the evidence paragraph inside `EvidenceBlockList` so the badge wraps independently (`max-w-full break-all`) without constraining paragraph width.
+  - Made the evidence `<p>` and expandable **মূল প্রমাণ দেখুন (EN)** `<p>` full-width (`w-full min-w-0 leading-relaxed break-words`, without `break-all` on prose).
+  - Updated Section D's grid to `grid-cols-1 lg:grid-cols-2 gap-3` with `min-w-0` on both columns (`Causal Organism` and `Spread`).
+  - Stacked `researchPapers` provider/DOI status badges above the full-width paper title link (`block w-full min-w-0 break-words`).
+- **Regression Test:** Added test in `frontend/src/components/monitoring/DiseaseDetectionCard.test.ts` verifying full Bengali and English paragraph preservation alongside long DOI citation IDs (`14` test files, `121` tests passed; `tsc -b && vite build`: `204` modules, `0` errors, `850ms`).
+
 ---
 
 ## 4. Remaining Limitations
 
-- Live authenticated browser QA for both **Farmer** and **Owner** accounts remains **BLOCKED (`AUTH_REQUIRED`)** because no real Firebase account credentials are available in this non-interactive environment and mock authentication is prohibited.
+- Live authenticated browser QA for both **Farmer** and **Owner** accounts remains **BLOCKED / NOT VERIFIED** (`AUTH_REQUIRED` initially, followed by `BROWSER_USER_TAKEOVER` on `http://localhost:5173/farmer/fields/farm-aec1a140-3c82-4d1a-85fa-502c96a6f5d8--F-1795121881205` when the user took control of the browser panel).
 - `npm test` verifies unit logic (`diseaseIntelligenceI18n.ts`, `DiseaseDetectionCard.test.ts`) rather than full live DOM interactions on authenticated pages.
 
 ---
@@ -60,4 +70,4 @@
 
 **Decision: PARTIAL (NOT FULLY ACCEPTED)**
 
-Unit/integration tests (`14` files, `120` tests), production build (`tsc -b && vite build`), live server startup, unauthenticated route rendering, and two verified defect fixes **PASS**. However, because authenticated **Farmer** and **Owner** browser testing could not be completed without real Firebase sign-in (`AUTH_REQUIRED`), this audit cannot be marked `FULLY ACCEPTED`.
+Unit/integration tests (`14` files, `121` tests), production build (`tsc -b && vite build`), live server startup, unauthenticated route rendering, and all three verified defect fixes (`parseEvidenceBlocks` nested brackets, mobile overflow wrapping, and Section D full-width paragraph layout) **PASS**. However, because live authenticated **Farmer** and **Owner** browser inspection was not completed in the automated browser session, this audit cannot be marked `FULLY ACCEPTED`.

@@ -193,4 +193,19 @@ describe('Bilingual Disease Intelligence UI helpers', () => {
     expect(blocks[2].citationId).toBeNull();
     expect(blocks[2].bnText).toContain('অসমাপ্ত বন্ধনী');
   });
+
+  it('preserves full Bengali and English paragraph text alongside long DOI citation IDs', () => {
+    const longDoiRaw =
+      '[doi:10.1016/j.cropro.2024.106612-extended-pathogen-review] ' +
+      'এই রোগটি Phytophthora infestans নামক ওমাইসিট জীবাণুর মাধ্যমে সৃষ্টি হয় এবং শীতল ও আর্দ্র আবহাওয়ায় দ্রুত বিস্তার লাভ করে। ' +
+      '[মূল উৎস (EN): Late blight is caused by the oomycete Phytophthora infestans and spreads rapidly under cool, humid field conditions with prolonged leaf wetness.]';
+
+    const blocks = parseEvidenceBlocks(longDoiRaw);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].citationId).toBe('doi:10.1016/j.cropro.2024.106612-extended-pathogen-review');
+    expect(blocks[0].bnText).toContain('এই রোগটি Phytophthora infestans নামক ওমাইসিট জীবাণুর মাধ্যমে সৃষ্টি হয়');
+    expect(blocks[0].enText).toBe(
+      'Late blight is caused by the oomycete Phytophthora infestans and spreads rapidly under cool, humid field conditions with prolonged leaf wetness.'
+    );
+  });
 });

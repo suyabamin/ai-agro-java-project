@@ -138,7 +138,7 @@ const EvidenceBlockList: React.FC<EvidenceBlockListProps> = ({
     return <p className="text-[11px] text-on-surface-variant">{emptyText}</p>;
   }
   return (
-    <div className="space-y-2">
+    <div className="space-y-2.5">
       {blocks.map((blk, i) => {
         const primaryText =
           lang === 'bn'
@@ -148,24 +148,24 @@ const EvidenceBlockList: React.FC<EvidenceBlockListProps> = ({
         return (
           <div
             key={`${blk.citationId || 'blk'}-${i}`}
-            className="p-2.5 rounded-lg bg-surface-container border border-outline-variant/20 space-y-1.5"
+            className="w-full min-w-0 p-3 rounded-lg bg-surface-container border border-outline-variant/20 space-y-2"
           >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="text-xs text-on-surface leading-relaxed flex-1 min-w-0 break-words">
-                {primaryText}
-              </p>
-              {blk.citationId && (
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary shrink-0 max-w-full break-all">
+            {blk.citationId && (
+              <div className="flex flex-wrap items-center gap-1.5 w-full min-w-0">
+                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-primary/10 text-primary max-w-full break-all">
                   {blk.citationId}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
+            <p className="w-full min-w-0 text-xs text-on-surface leading-relaxed break-words">
+              {primaryText}
+            </p>
             {showExpandableOriginal && blk.enText && (
-              <details className="text-[11px] text-on-surface-variant">
+              <details className="w-full min-w-0 text-[11px] text-on-surface-variant">
                 <summary className="cursor-pointer font-semibold text-primary hover:underline select-none">
                   {toggleLabel}
                 </summary>
-                <p className="mt-1 p-2 rounded bg-surface-container-lowest border border-outline-variant/20 font-normal leading-relaxed break-words">
+                <p className="mt-1.5 w-full min-w-0 p-2.5 rounded bg-surface-container-lowest border border-outline-variant/20 font-normal leading-relaxed break-words">
                   {blk.enText}
                 </p>
               </details>
@@ -554,8 +554,8 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                     <h5 className="text-[11px] font-extrabold uppercase tracking-wider text-primary">
                       {ui.sectionCausesSpread}
                     </h5>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="space-y-1">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                      <div className="min-w-0 space-y-1.5">
                         <span className="text-[10px] font-bold text-on-surface-variant block">
                           {ui.causalOrganismLabel}
                         </span>
@@ -567,7 +567,7 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                           translationUnavailableNotice={ui.translationUnavailableNotice}
                         />
                       </div>
-                      <div className="space-y-1">
+                      <div className="min-w-0 space-y-1.5">
                         <span className="text-[10px] font-bold text-on-surface-variant block">
                           {ui.spreadLabel}
                         </span>
@@ -720,21 +720,23 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                             key={`${paper.paperId || pIdx}`}
                             className="p-3 rounded-xl bg-surface-container border border-outline-variant/20 space-y-1.5 text-xs"
                           >
-                            <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="space-y-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant max-w-full break-words">
+                                  {paper.sourceProvider}
+                                  {paper.doiVerificationStatus && paper.doiVerificationStatus !== 'NOT_APPLICABLE'
+                                    ? ` • ${ui.doiStatusLabel}: ${paper.doiVerificationStatus}`
+                                    : ''}
+                                </span>
+                              </div>
                               <a
                                 href={paper.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="font-bold text-primary hover:underline flex-1 min-w-0 break-words"
+                                className="block w-full min-w-0 font-bold text-primary hover:underline break-words"
                               >
                                 {paper.title}
                               </a>
-                              <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-surface-container-lowest text-on-surface-variant shrink-0 max-w-full break-words">
-                                {paper.sourceProvider}
-                                {paper.doiVerificationStatus && paper.doiVerificationStatus !== 'NOT_APPLICABLE'
-                                  ? ` • ${ui.doiStatusLabel}: ${paper.doiVerificationStatus}`
-                                  : ''}
-                              </span>
                             </div>
                             <div className="text-[11px] text-on-surface-variant flex flex-wrap gap-x-3 gap-y-0.5">
                               {paper.authors && paper.authors.length > 0 && (
