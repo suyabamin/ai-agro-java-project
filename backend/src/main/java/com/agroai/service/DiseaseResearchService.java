@@ -251,13 +251,20 @@ public class DiseaseResearchService {
     }
 
     public CursorPage<Map<String, Object>> listForField(String farmId, String fieldId, String uid, String cursor, Integer size) {
+        return listForField(farmId, fieldId, uid, cursor, size, null);
+    }
+
+    public CursorPage<Map<String, Object>> listForField(String farmId, String fieldId, String uid, String cursor, Integer size, String status) {
         Field authorizedField = authorization.requireReadAccess(farmId, fieldId, uid);
         String canonicalFieldId = authorizedField != null && authorizedField.getFieldId() != null
                 ? authorizedField.getFieldId()
                 : fieldId;
         int pageSize = CursorPagination.validatePageSize(size);
+        Map<String, Object> filters = (status != null && !status.isBlank())
+                ? Map.of("researchStatus", status.trim().toUpperCase())
+                : Map.of();
         CursorPage<Map<String, Object>> page = repository.page(
-                COLLECTION, farmId, canonicalFieldId, CursorPagination.decode(cursor), pageSize, Map.of(), null, null);
+                COLLECTION, farmId, canonicalFieldId, CursorPagination.decode(cursor), pageSize, filters, null, null);
         return page != null ? page : new CursorPage<>(List.of(), null, false);
     }
 

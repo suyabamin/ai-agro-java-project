@@ -59,6 +59,14 @@ describe('monitoringService', () => {
     expect(res.data?.fieldId).toBe('field-1');
   });
 
+  it('passes server-side status filter to field research history endpoint', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: { success: true, data: { items: [], nextCursor: null, hasNext: false, pageSize: 15 } } });
+    await monitoringService.listFieldResearch('farm-1', 'field-1', null, 15, 'COMPLETED');
+    expect(apiClient.get).toHaveBeenCalledWith('/farms/farm-1/fields/field-1/monitoring/research', {
+      params: { cursor: undefined, size: 15, status: 'COMPLETED' },
+    });
+  });
+
   it('submits telemetry through the field monitoring API', async () => {
     vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { success: true, data: { telemetryId: 't-1' } } });
     const record = { measurementType: 'SOIL_MOISTURE', value: 42, unit: '%', observedAt: '2026-11-18T00:00:00Z', source: 'MANUAL' };

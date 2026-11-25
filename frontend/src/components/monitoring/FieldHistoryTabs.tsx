@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { monitoringService, type MonitoringRecord } from '../../services/monitoringService';
 import { StatusBadge } from '../ui/StatusBadge';
 
@@ -22,9 +22,11 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const reqSeqRef = useRef(0);
 
   const fetchTab = useCallback(
     async (cursor?: string | null, append = false) => {
+      const seq = ++reqSeqRef.current;
       setLoading(true);
       setError(null);
       try {
@@ -34,7 +36,8 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
           hasNext: false,
         };
         if (tab === 'research') {
-          const res = await monitoringService.listFieldResearch(farmId, fieldId, cursor, 15);
+          const activeStatus = statusFilter !== 'ALL' ? statusFilter : undefined;
+          const res = await monitoringService.listFieldResearch(farmId, fieldId, cursor, 15, activeStatus);
           if (res.data) pageData = res.data;
         } else if (tab === 'disease') {
           const res = await monitoringService.analyses(farmId, fieldId, cursor, 15);
@@ -49,31 +52,49 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
           const res = await monitoringService.irrigationPlans(farmId, fieldId, cursor, 15);
           if (res.data) pageData = res.data;
         }
+        if (seq !== reqSeqRef.current) return;
         setItems((prev) => (append ? [...prev, ...(pageData.items || [])] : pageData.items || []));
         setNextCursor(pageData.nextCursor || null);
         setHasNext(Boolean(pageData.hasNext));
       } catch (e: unknown) {
+        if (seq !== reqSeqRef.current) return;
         setError(e instanceof Error ? e.message : 'Failed to load field history');
       } finally {
-        setLoading(false);
+        if (seq === reqSeqRef.current) setLoading(false);
       }
     },
-    [farmId, fieldId, tab]
+    [farmId, fieldId, tab, statusFilter]
   );
 
   useEffect(() => {
     setItems([]);
     setNextCursor(null);
     setHasNext(false);
-    setStatusFilter('ALL');
     fetchTab(null, false);
   }, [fetchTab, refreshKey]);
 
-  const filteredItems = items.filter((item) => {
-    if (statusFilter === 'ALL') return true;
-    const st = String(item.researchStatus || item.status || item.recommendationStatus || item.validationStatus || '').toUpperCase();
-    return st === statusFilter;
-  });
+  const handleTabChange = (nextTab: HistoryTab) => {
+    setStatusFilter('ALL');
+    setTab(nextTab);
+  };
+
+  const handleFilterChange = (nextStatus: string) => {
+    setItems([]);
+    setNextCursor(null);
+    setHasNext(false);
+    setStatusFilter(nextStatus);
+  };
+
+  const isServerFiltered = tab === 'research';
+  const filteredItems = isServerFiltered
+    ? items
+    : items.filter((item) => {
+        if (statusFilter === 'ALL') return true;
+        const st = String(
+          item.researchStatus || item.status || item.recommendationStatus || item.validationStatus || ''
+        ).toUpperCase();
+        return st === statusFilter;
+      });
 
   const tabs: Array<{ id: HistoryTab; label: string }> = [
     { id: 'research', label: 'Research & Advisory' },
@@ -94,19 +115,26 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
             Preserved Chronological Records
           </h3>
         </div>
-        <select
-          aria-label="Filter history status"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="h-8 px-2.5 rounded-lg bg-surface-container text-on-surface text-xs border border-outline-variant/30"
-        >
-          <option value="ALL">All Statuses</option>
-          <option value="COMPLETED">COMPLETED</option>
-          <option value="VALID">VALID</option>
-          <option value="BLOCKED">BLOCKED</option>
-          <option value="FAILED">FAILED</option>
-          <option value="INSUFFICIENT_EVIDENCE">INSUFFICIENT_EVIDENCE</option>
-        </select>
+        <div className="flex items-center gap-2">
+          {statusFilter !== 'ALL' && !isServerFiltered && (
+            <span className="text-[10px] text-on-surface-variant">
+              Filtered loaded pages ({items.length})
+            </span>
+          )}
+          <select
+            aria-label="Filter history status"
+            value={statusFilter}
+            onChange={(e) => handleFilterChange(e.target.value)}
+            className="h-8 px-2.5 rounded-lg bg-surface-container text-on-surface text-xs border border-outline-variant/30"
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="COMPLETED">COMPLETED</option>
+            <option value="VALID">VALID</option>
+            <option value="BLOCKED">BLOCKED</option>
+            <option value="FAILED">FAILED</option>
+            <option value="INSUFFICIENT_EVIDENCE">INSUFFICIENT_EVIDENCE</option>
+          </select>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1.5 border-b border-outline-variant/20 pb-2">
@@ -114,7 +142,7 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => handleTabChange(t.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
               tab === t.id
                 ? 'bg-primary text-on-primary'
@@ -156,7 +184,7 @@ export const FieldHistoryTabs: React.FC<FieldHistoryTabsProps> = ({
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[10px] text-on-surface-variant">{id}</span>
-                    {idx === 0 && !nextCursor && (
+                    {idx === 0 && statusFilter === 'ALL' && (
                       <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[9px] font-bold uppercase">
                         Latest
                       </span>

@@ -121,6 +121,11 @@ public class FirestoreFieldMonitoringRepository implements FieldMonitoringReposi
                 if (!after.exists() || !farmId.equals(after.getString("farmId")) || !fieldId.equals(after.getString("fieldId"))) {
                     throw new IllegalArgumentException("Cursor is invalid for this field");
                 }
+                for (Map.Entry<String, Object> filter : filters.entrySet()) {
+                    if (!java.util.Objects.equals(after.get(filter.getKey()), filter.getValue())) {
+                        throw new IllegalArgumentException("Cursor does not match the active filter");
+                    }
+                }
                 indexedQuery = indexedQuery.startAfter(after);
             }
 

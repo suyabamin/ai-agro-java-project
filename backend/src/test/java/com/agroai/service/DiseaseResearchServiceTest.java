@@ -176,4 +176,29 @@ class DiseaseResearchServiceTest {
         assertEquals("cursor_2", page.nextCursor());
         verify(authorization).requireReadAccess("farm-1", "f1", "owner-1");
     }
+
+    @Test
+    void passesServerSideStatusFilterToRepositoryAndVerifiesCompositeIndexExists() throws Exception {
+        FieldMonitoringRepository repository = mock(FieldMonitoringRepository.class);
+        MonitoringAuthorizationService authorization = mock(MonitoringAuthorizationService.class);
+        AiInferenceClient ai = mock(AiInferenceClient.class);
+
+        Field field = new Field();
+        field.setFieldId("farm-1--f1");
+        when(authorization.requireReadAccess("farm-1", "f1", "farmer-1")).thenReturn(field);
+        when(repository.page(eq(DiseaseResearchService.COLLECTION), eq("farm-1"), eq("farm-1--f1"),
+                isNull(), eq(15), eq(Map.of("researchStatus", "COMPLETED")), isNull(), isNull()))
+                .thenReturn(new CursorPage<>(List.of(), null, false));
+
+        DiseaseResearchService service = new DiseaseResearchService(repository, authorization, ai);
+        CursorPage<Map<String, Object>> page = service.listForField("farm-1", "f1", "farmer-1", null, 15, "completed");
+        assertTrue(page.items().isEmpty());
+        verify(repository).page(eq(DiseaseResearchService.COLLECTION), eq("farm-1"), eq("farm-1--f1"),
+                isNull(), eq(15), eq(Map.of("researchStatus", "COMPLETED")), isNull(), isNull());
+
+        java.nio.file.Path idxPath = java.nio.file.Path.of("..", "firestore.indexes.json");
+        String json = java.nio.file.Files.readString(idxPath);
+        assertTrue(json.contains("\"collectionGroup\": \"disease_research_reports\""));
+        assertTrue(json.contains("\"fieldPath\": \"researchStatus\""));
+    }
 }

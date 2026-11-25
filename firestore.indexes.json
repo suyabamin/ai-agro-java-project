@@ -34,6 +34,15 @@
       { "fieldPath": "eventType", "order": "ASCENDING" }, { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" },
       { "fieldPath": "__name__", "order": "DESCENDING" }
     ] },
+    { "collectionGroup": "disease_research_reports", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" }, { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
+    { "collectionGroup": "disease_research_reports", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "farmId", "order": "ASCENDING" }, { "fieldPath": "fieldId", "order": "ASCENDING" },
+      { "fieldPath": "researchStatus", "order": "ASCENDING" }, { "fieldPath": "createdAtEpochMs", "order": "DESCENDING" },
+      { "fieldPath": "__name__", "order": "DESCENDING" }
+    ] },
 
     { "collectionGroup": "public_farms", "queryScope": "COLLECTION", "fields": [
       { "fieldPath": "status", "order": "ASCENDING" },
