@@ -361,6 +361,8 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                             {paper.publicationYear ? ` (${paper.publicationYear})` : ''}
                             {paper.journal ? ` • ${paper.journal}` : ''}
                             {paper.doi ? ` • doi:${paper.doi}` : ''}
+                            {paper.isOpenAccess === true ? ' • Open Access' : paper.isOpenAccess === false ? ' • Full text restricted' : ''}
+                            {!paper.abstract ? ' • Abstract unavailable' : ''}
                           </div>
                         </li>
                       ))}
@@ -371,7 +373,7 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                 {researchSources.length > 0 && (
                   <div className="pt-2 border-t border-outline-variant/20 space-y-1.5">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
-                      Verified Agricultural Sources ({researchSources.length})
+                      Collected Agricultural Sources & References ({researchSources.length})
                     </span>
                     <ul className="space-y-1">
                       {researchSources.map((src, sIdx) => (
