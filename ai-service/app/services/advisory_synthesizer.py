@@ -16,6 +16,75 @@ _CAUSE_KW = ("fungus", "fungi", "bacteria", "virus", "oomycete", "alternaria", "
 _SPREAD_KW = ("spread", "disseminat", "wind", "rain", "splash", "soil", "seed", "vector", "insect", "water", "debris")
 _MGMT_KW = ("control", "manage", "management", "treatment", "biocontrol", "trichoderma", "pseudomonas", "resistant", "sanitation", "pruning", "cultural", "ipm")
 
+# Step-specific claim-matching keywords (must match actual abstract/snippet content, never title/DOI/portal alone)
+_STEP_ISOLATE_KW = (
+    "remove", "removing", "prune", "pruning", "isolate", "isolating",
+    "rogue", "roguing", "destroy", "infected leaves", "infected foliage",
+    "affected leaves", "symptomatic", "scout", "scouting", "inspect", "sanitation",
+)
+_STEP_MANAGEMENT_KW = (
+    "management", "manage", "control", "treatment", "biocontrol",
+    "integrated pest", "ipm", "fungicide", "bactericide", "resistant",
+    "cultivar", "variety", "trichoderma", "pseudomonas", "bioagent", "botanical",
+)
+_STEP_PREVENTIVE_KW = (
+    "overhead", "irrigation", "watering", "airflow", "air circulation",
+    "spacing", "canopy", "drainage", "debris", "residue", "crop rotation",
+    "rotation", "disease-free seed", "clean seed", "mulch", "mulching", "hygiene", "sanitation",
+)
+
+
+def _eligible_evidence_candidates(
+    papers: list[ResearchPaper],
+    sources: list[ResearchSource],
+) -> list[tuple[str, str]]:
+    """Return (citation_id, evidence_text) pairs from sources with actual abstracts/snippets.
+
+    Excludes generic portal-only references (bangladesh_agri_official) unless extractedSummary exists,
+    and excludes papers missing abstracts (DOI/title alone never qualifies as claim support).
+    """
+    candidates: list[tuple[str, str]] = []
+    for p in papers:
+        abstract = (p.abstract or "").strip()
+        if len(abstract) >= 25:
+            cite = p.paperId or (f"doi:{p.doi}" if p.doi else p.domain)
+            candidates.append((cite, abstract))
+    for s in sources:
+        if s.provider == "bangladesh_agri_official" and not (s.extractedSummary or "").strip():
+            continue
+        text = (s.extractedSummary or s.snippet or "").strip()
+        if len(text) >= 25:
+            candidates.append((s.domain, text))
+    return candidates
+
+
+def _match_citations_for_claim(
+    papers: list[ResearchPaper],
+    sources: list[ResearchSource],
+    claim_keywords: tuple[str, ...],
+    limit: int = 3,
+) -> list[str]:
+    """Deterministically attach citations ONLY when retrieved text explicitly supports the claim."""
+    pattern = re.compile(
+        r"\b(?:" + "|".join(re.escape(kw) for kw in claim_keywords) + r")\b",
+        flags=re.IGNORECASE,
+    )
+    matched: list[str] = []
+    seen: set[str] = set()
+    for cite, text in _eligible_evidence_candidates(papers, sources):
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        for sent in sentences:
+            if len(sent) < 20:
+                continue
+            if pattern.search(sent):
+                if cite not in seen:
+                    seen.add(cite)
+                    matched.append(cite)
+                break
+        if len(matched) >= limit:
+            break
+    return matched
+
 
 def _extract_matching_snippets(
     papers: list[ResearchPaper],
@@ -170,11 +239,9 @@ def synthesize_evidence_bengali_report(
         return " | ".join(f"[{cite}] {txt}" for cite, txt in hits)
 
     ref_items: list[str] = []
-    for p in papers[:3]:
-        ref_items.append(f"doi:{p.doi}" if p.doi else p.domain)
-    for s in sources[:4]:
-        if s.domain not in ref_items:
-            ref_items.append(s.domain)
+    for cite, _txt in sym_hits + cause_hits + spread_hits + mgmt_hits:
+        if cite not in ref_items:
+            ref_items.append(cite)
     ref_list = ", ".join(f"[{i}] {r}" for i, r in enumerate(ref_items, start=1))
 
     return BengaliResearchReport(
@@ -222,9 +289,6 @@ def synthesize_advisory(
 ) -> AdvisoryPayload:
     band = _confidence_band(confidence)
     t_notes, critical_field = _telemetry_notes(telemetry_context, is_healthy)
-
-    cited_papers = [p.paperId for p in papers[:5]]
-    cited_domains = list(dict.fromkeys(s.domain for s in sources[:6] if s.domain))
 
     disclaimer_en = (
         "Advisory is synthesized strictly from retrieved agricultural sources and field telemetry; "
@@ -305,7 +369,19 @@ def synthesize_advisory(
         esc_reasons_en.append("Field agronomic status is Critical")
         esc_reasons_bn.append("মাঠের কৃষি অবস্থা সংকটাপন্ন")
 
-    top_cites = cited_papers[:2] or cited_domains[:2]
+    immediate_cites = _match_citations_for_claim(papers, sources, _STEP_ISOLATE_KW, limit=3)
+    mgmt_cites = _match_citations_for_claim(papers, sources, _STEP_MANAGEMENT_KW, limit=3)
+    preventive_cites = _match_citations_for_claim(papers, sources, _STEP_PREVENTIVE_KW, limit=3)
+
+    all_step_cites = list(dict.fromkeys(immediate_cites + mgmt_cites + preventive_cites))
+    paper_id_set = {p.paperId for p in papers if p.paperId}
+    source_domain_set = {
+        s.domain for s in sources
+        if s.domain and (s.provider != "bangladesh_agri_official" or bool((s.extractedSummary or "").strip()))
+    }
+    cited_papers = [c for c in all_step_cites if c in paper_id_set]
+    cited_domains = [c for c in all_step_cites if c in source_domain_set and c not in paper_id_set]
+
     steps = [
         AdvisoryActionItem(
             priority="IMMEDIATE",
@@ -313,7 +389,7 @@ def synthesize_advisory(
             titleBn="আক্রান্ত পাতা পরীক্ষা ও আলাদা করুন",
             detailEn=f"Check neighboring {crop_name} plants for matching symptoms of {disease_name.replace('_', ' ')} and remove heavily infected leaves carefully.",
             detailBn=f"পাশের {crop_name} গাছে একই লক্ষণ আছে কিনা দেখুন এবং বেশি আক্রান্ত পাতা সাবধানে সরিয়ে ফেলুন।",
-            citationIds=top_cites,
+            citationIds=immediate_cites,
         ),
         AdvisoryActionItem(
             priority="SHORT_TERM",
@@ -321,7 +397,7 @@ def synthesize_advisory(
             titleBn="DAE / BARI / BRRI নির্দেশিকা অনুযায়ী ব্যবস্থাপনা যাচাই করুন",
             detailEn="Review the linked scholarly abstracts and extension guides with a qualified agronomist before any treatment.",
             detailBn="যেকোনো চিকিৎসার আগে সংযুক্ত গবেষণাপত্র ও কৃষি সম্প্রসারণ নির্দেশিকা কৃষিবিদের সাথে যাচাই করুন।",
-            citationIds=cited_papers[:2],
+            citationIds=mgmt_cites,
         ),
         AdvisoryActionItem(
             priority="PREVENTIVE",
@@ -329,7 +405,7 @@ def synthesize_advisory(
             titleBn="আর্দ্রতা নিয়ন্ত্রণ ও জমি পরিচ্ছন্ন রাখুন",
             detailEn="Avoid late-evening overhead watering, maintain plant spacing for airflow, and clear infected crop debris.",
             detailBn="সন্ধ্যায় পাতায় পানি ছিটানো এড়িয়ে চলুন, বাতাস চলাচলের ব্যবস্থা রাখুন এবং আক্রান্ত অবশিষ্টাংশ পরিষ্কার করুন।",
-            citationIds=cited_domains[:2],
+            citationIds=preventive_cites,
         ),
     ]
 

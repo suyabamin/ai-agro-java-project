@@ -21,7 +21,7 @@
 ---
 
 ## 2. Verification Summary
-- **Python (`pytest -q`):** `51 passed` (47 existing/M1 + 4 new M2 tests in `tests/test_advisory_synthesizer.py`).
-- **Spring Boot (`mvnw.cmd test`):** `36 passed, 0 failures, 0 errors, 0 skipped`.
+- **Python (`pytest -q`):** `55 passed` (47 existing/M1 + 8 M2/citation-integrity tests in `tests/test_advisory_synthesizer.py`).
+- **Spring Boot (`mvnw.cmd test`):** `50 passed, 0 failures, 0 errors, 0 skipped`.
 - **Frontend (`npm test && npm run build`):** `112 passed` across `14` files; `vite build` `0` errors.
-- **Live M2 Orchestrator + Advisory Synthesis:** Verified against real OpenAlex/Crossref/Tavily responses with telemetry context (`predictedFieldStatus=Critical`, `humidity=85.0`), producing grounded `AdvisoryPayload` (`READY`, `HIGH` severity, `escalationRequired=true`, `3` cited action steps, and DOI-cited Bengali sections).
+- **M2-01 Citation Remediation:** Implemented claim-level word-boundary citation matching (`_match_citations_for_claim`) and portal/abstract-less exclusion (`_eligible_evidence_candidates`); see `M2_CITATION_REMEDIATION_REPORT.md`.
