@@ -168,6 +168,7 @@ public class DiseaseResearchService {
             report.put("successfulProviders", aiResp.getOrDefault("successfulProviders", List.of()));
             report.put("failedProviders", aiResp.getOrDefault("failedProviders", List.of()));
             report.put("providerFailureReasons", aiResp.getOrDefault("providerFailureReasons", Map.of()));
+            report.put("providerStatuses", aiResp.getOrDefault("providerStatuses", Map.of()));
             report.put("duplicateCount", aiResp.getOrDefault("duplicateCount", 0));
             report.put("researchPapers", aiResp.getOrDefault("researchPapers", List.of()));
             report.put("sourceReferences", aiResp.getOrDefault("sourceReferences", aiResp.getOrDefault("sources", List.of())));
@@ -224,6 +225,7 @@ public class DiseaseResearchService {
                 snapshot.put("successfulProviders", completedReport.getOrDefault("successfulProviders", List.of()));
                 snapshot.put("failedProviders", completedReport.getOrDefault("failedProviders", List.of()));
                 snapshot.put("providerFailureReasons", completedReport.getOrDefault("providerFailureReasons", Map.of()));
+                snapshot.put("providerStatuses", completedReport.getOrDefault("providerStatuses", Map.of()));
                 snapshot.put("duplicateCount", completedReport.getOrDefault("duplicateCount", 0));
                 snapshot.put("researchPapers", completedReport.getOrDefault("researchPapers", List.of()));
                 snapshot.put("evidenceQuality", completedReport.getOrDefault("evidenceQuality", "LIMITED"));

@@ -360,6 +360,9 @@ def test_orchestrator_partial_provider_failure_and_bamis_status(monkeypatch):
     assert "openalex" in res.successfulProviders
     assert "semantic_scholar" in res.failedProviders
     assert res.providerFailureReasons.get("semantic_scholar") == "timeout"
+    assert res.providerStatuses.get("openalex") == "SUCCESS"
+    assert res.providerStatuses.get("semantic_scholar") == "TIMEOUT"
+    assert res.providerStatuses.get("google_selenium") == "BLOCKED"
     assert res.bamisStatus.get("bamisApiAvailable") is False
     assert res.bamisStatus.get("scrapingPerformed") is False
     assert len(res.researchPapers) == 1

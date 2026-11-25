@@ -412,6 +412,23 @@ def _deduplicate_and_rank_papers(
     return trimmed, duplicates
 
 
+def _canonical_provider_status(reason: str | None, succeeded: bool) -> str:
+    if succeeded:
+        return "SUCCESS"
+    r = (reason or "").strip().lower()
+    if "captcha" in r or "blocked" in r:
+        return "BLOCKED"
+    if r == "rate_limited":
+        return "RATE_LIMITED"
+    if r == "timeout":
+        return "TIMEOUT"
+    if r in ("zero_results", "no_search_results"):
+        return "NO_RESULTS"
+    if r in ("missing_api_key", "invalid_api_key", "quota_or_billing_exhausted", "unavailable"):
+        return "UNAVAILABLE"
+    return "FAILED"
+
+
 def _compute_evidence_quality(papers: list[Any], sources: list[ResearchSource]) -> str:
     non_portal_sources = [s for s in sources if s.provider != "bangladesh_agri_official"]
     verified_papers = [
@@ -650,6 +667,11 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
     if bd_outcome.ok:
         successful_providers.append("bangladesh_agri_official")
 
+    provider_statuses: dict[str, str] = {
+        prov: _canonical_provider_status(failure_reasons.get(prov), prov in successful_providers)
+        for prov in providers_attempted
+    }
+
     non_portal_sources = _validate_and_rank_sources(raw_sources, req.maxResults)
     if non_portal_sources:
         combined_sources = _validate_and_rank_sources(
@@ -714,6 +736,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
                 successfulProviders=successful_providers,
                 failedProviders=failed_providers,
                 providerFailureReasons=failure_reasons,
+                providerStatuses=provider_statuses,
                 duplicateCount=duplicate_count,
                 evidenceQuality="INSUFFICIENT",
                 bamisStatus=bamis_status,
@@ -748,6 +771,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             successfulProviders=successful_providers,
             failedProviders=failed_providers,
             providerFailureReasons=failure_reasons,
+            providerStatuses=provider_statuses,
             duplicateCount=duplicate_count,
             evidenceQuality="INSUFFICIENT",
             bamisStatus=bamis_status,
@@ -800,6 +824,7 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
         successfulProviders=successful_providers,
         failedProviders=failed_providers,
         providerFailureReasons=failure_reasons,
+        providerStatuses=provider_statuses,
         duplicateCount=duplicate_count,
         evidenceQuality=evidence_quality,
         bamisStatus=bamis_status,

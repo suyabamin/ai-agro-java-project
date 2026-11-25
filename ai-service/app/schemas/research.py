@@ -130,6 +130,7 @@ class DiseaseResearchResponse(BaseModel):
     successfulProviders: list[str] = Field(default_factory=list)
     failedProviders: list[str] = Field(default_factory=list)
     providerFailureReasons: dict[str, str] = Field(default_factory=dict)
+    providerStatuses: dict[str, str] = Field(default_factory=dict)
     duplicateCount: int = 0
     evidenceQuality: Literal["HIGH", "MODERATE", "LIMITED", "INSUFFICIENT"] = "LIMITED"
     bamisStatus: dict[str, Any] = Field(default_factory=dict)

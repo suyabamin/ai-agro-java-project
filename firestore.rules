@@ -179,6 +179,7 @@ service cloud.firestore {
     match /field_images/{imageId} { allow read, write: if false; }
     match /soil_telemetry/{readingId} { allow read, write: if false; }
     match /ai_analysis_results/{analysisId} { allow read, write: if false; }
+    match /disease_research_reports/{researchId} { allow read, write: if false; }
     match /irrigation_plans/{planId} { allow read, write: if false; }
     match /field_activity/{eventId} { allow read, write: if false; }
 
