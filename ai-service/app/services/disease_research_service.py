@@ -332,8 +332,190 @@ def _validate_and_rank_sources(sources: list[ResearchSource], max_results: int) 
     return valid[:max_results]
 
 
-def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse:
+_CACHE_LOCK = threading.Lock()
+_RESEARCH_CACHE: dict[tuple[str, str, int], tuple[float, DiseaseResearchResponse]] = {}
+
+
+def clear_research_cache() -> None:
+    with _CACHE_LOCK:
+        _RESEARCH_CACHE.clear()
+
+
+def _query_terms(disease_name: str, crop_name: str) -> set[str]:
+    raw = f"{format_readable_disease(disease_name)} {crop_name}".lower()
+    return {t for t in re.findall(r"[a-z0-9]+", raw) if len(t) > 2}
+
+
+def _deduplicate_and_rank_papers(
+    papers: list[Any],
+    disease_name: str,
+    crop_name: str,
+    max_results: int,
+) -> tuple[list[Any], int]:
+    from app.services.providers.base import normalize_doi
+
+    by_key: dict[str, Any] = {}
+    duplicates = 0
+    for paper in papers:
+        doi = normalize_doi(paper.doi)
+        norm_title = re.sub(r"[^a-z0-9]+", " ", (paper.title or "").lower()).strip()
+        if not norm_title:
+            continue
+        key = f"doi:{doi}" if doi else f"title:{norm_title[:120]}"
+        if key in by_key:
+            duplicates += 1
+            existing = by_key[key]
+            if paper.sourceProvider != existing.sourceProvider and paper.sourceProvider not in existing.additionalProviders:
+                existing.additionalProviders.append(paper.sourceProvider)
+            if not existing.abstract and paper.abstract:
+                existing.abstract = paper.abstract
+            if not existing.doi and paper.doi:
+                existing.doi = paper.doi
+            if not existing.journal and paper.journal:
+                existing.journal = paper.journal
+            if not existing.authors and paper.authors:
+                existing.authors = paper.authors
+            if existing.citationCount is None and paper.citationCount is not None:
+                existing.citationCount = paper.citationCount
+            continue
+        by_key[key] = paper
+
+    terms = _query_terms(disease_name, crop_name)
+    now_year = datetime.now(timezone.utc).year
+    ranked: list[Any] = []
+    for paper in by_key.values():
+        score = 0.0
+        score += max(0.0, 3.0 - _tier_priority(paper.authoritativeTier)) * 2.0
+        if paper.metadataValidated:
+            score += 3.0
+        if paper.doiVerificationStatus == "VERIFIED_MATCH":
+            score += 4.0
+        elif paper.doiVerificationStatus == "METADATA_MISMATCH":
+            score -= 2.5
+        elif paper.doiVerificationStatus == "DOI_NOT_FOUND":
+            score -= 1.5
+        if paper.abstract:
+            score += 2.0
+        if paper.publicationYear:
+            age = max(0, now_year - paper.publicationYear)
+            score += max(0.0, 2.0 - (age * 0.1))
+        haystack = f"{paper.title} {paper.abstract or ''}".lower()
+        matches = sum(1 for t in terms if t in haystack)
+        score += min(4.0, matches * 1.0)
+        paper.relevanceScore = round(score, 2)
+        ranked.append(paper)
+
+    ranked.sort(key=lambda p: (-p.relevanceScore, -(p.publicationYear or 0), p.title.lower()))
+    trimmed = ranked[:max_results]
+    for idx, p in enumerate(trimmed, start=1):
+        p.evidenceRank = idx
+    return trimmed, duplicates
+
+
+def _compute_evidence_quality(papers: list[Any], sources: list[ResearchSource]) -> str:
+    non_portal_sources = [s for s in sources if s.provider != "bangladesh_agri_official"]
+    verified_papers = [
+        p for p in papers if p.metadataValidated and (
+            p.doiVerificationStatus == "VERIFIED_MATCH"
+            or p.authoritativeTier in ("BANGLADESH_GOV_RESEARCH", "INTERNATIONAL_AGRI")
+        )
+    ]
+    if len(verified_papers) >= 2:
+        return "HIGH"
+    if any(p.metadataValidated for p in papers) or len(non_portal_sources) >= 2:
+        return "MODERATE"
+    if non_portal_sources or papers:
+        return "LIMITED"
+    return "INSUFFICIENT"
+
+
+def _run_web_search_track(queries: list[str], max_results: int) -> dict[str, Any]:
     from app.services.tavily_search_provider import TavilySearchProvider
+
+    attempted: list[str] = ["google_selenium"]
+    succeeded: list[str] = []
+    failed: list[str] = []
+    failure_reasons: dict[str, str] = {}
+
+    status, raw_sources, err_code, sel_ver, browser_info = _run_selenium_google_search(queries, max_results)
+    validated_selenium = _validate_and_rank_sources(raw_sources, max_results) if status == "COMPLETED" else []
+    if status == "COMPLETED" and validated_selenium:
+        succeeded.append("google_selenium")
+        return {
+            "sources": validated_selenium,
+            "raw_count": len(raw_sources),
+            "attempted": attempted,
+            "succeeded": succeeded,
+            "failed": failed,
+            "failure_reasons": failure_reasons,
+            "successful_provider": "google_selenium",
+            "fallback_used": False,
+            "fallback_reason": None,
+            "selenium_status": status,
+            "sel_ver": sel_ver,
+            "browser_info": browser_info,
+        }
+
+    fallback_reason = err_code or f"SELENIUM_{status}"
+    failed.append("google_selenium")
+    failure_reasons["google_selenium"] = fallback_reason
+
+    attempted.append("tavily")
+    tavily_outcome = TavilySearchProvider().search(
+        queries,
+        max_results=max_results,
+        domain_classifier=classify_domain_tier,
+    )
+    if tavily_outcome.ok:
+        tavily_validated = _validate_and_rank_sources(tavily_outcome.sources, max_results)
+        if tavily_validated:
+            succeeded.append("tavily")
+            return {
+                "sources": tavily_validated,
+                "raw_count": len(tavily_outcome.sources),
+                "attempted": attempted,
+                "succeeded": succeeded,
+                "failed": failed,
+                "failure_reasons": failure_reasons,
+                "successful_provider": "tavily",
+                "fallback_used": True,
+                "fallback_reason": fallback_reason,
+                "selenium_status": status,
+                "sel_ver": sel_ver,
+                "browser_info": browser_info,
+            }
+
+    failed.append("tavily")
+    failure_reasons["tavily"] = tavily_outcome.reason
+    return {
+        "sources": [],
+        "raw_count": 0,
+        "attempted": attempted,
+        "succeeded": succeeded,
+        "failed": failed,
+        "failure_reasons": failure_reasons,
+        "successful_provider": None,
+        "fallback_used": True,
+        "fallback_reason": fallback_reason,
+        "selenium_status": status,
+        "sel_ver": sel_ver,
+        "browser_info": browser_info,
+        "tavily_reason": tavily_outcome.reason,
+    }
+
+
+def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse:
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.core.config import settings
+    from app.schemas.research import ResearchPaper
+    from app.services.providers import (
+        BangladeshAgriProvider,
+        CrossrefProvider,
+        OpenAlexProvider,
+        SemanticScholarProvider,
+    )
 
     crop = infer_crop_from_disease(req.diseaseName, req.cropName)
     healthy = req.isHealthy if req.isHealthy is not None else is_healthy_class(req.diseaseName)
@@ -350,78 +532,145 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             lowConfidenceWarning=low_conf,
             queriesUsed=[],
             sources=[],
+            sourceReferences=[],
+            researchPapers=[],
             bengaliReport=report,
             searchProvidersAttempted=[],
+            providersAttempted=[],
+            successfulProviders=[],
+            failedProviders=[],
             successfulProvider=None,
             fallbackUsed=False,
             fallbackReason=None,
             sourceCount=0,
             validatedSourceCount=0,
+            duplicateCount=0,
+            evidenceQuality="INSUFFICIENT",
         )
+
+    cache_key = (req.diseaseName.strip().lower(), crop.strip().lower(), req.maxResults)
+    now_mono = _time.monotonic()
+    if settings.RESEARCH_CACHE_TTL_SEC > 0:
+        with _CACHE_LOCK:
+            cached = _RESEARCH_CACHE.get(cache_key)
+            if cached and (now_mono - cached[0]) < settings.RESEARCH_CACHE_TTL_SEC:
+                return cached[1].model_copy(update={"analysisId": req.analysisId})
 
     queries = build_google_queries(req.diseaseName, crop)
-    providers_attempted = ["google_selenium"]
-    status, raw_sources, err_code, sel_ver, browser_info = _run_selenium_google_search(queries, req.maxResults)
-    validated_sources = _validate_and_rank_sources(raw_sources, req.maxResults) if status == "COMPLETED" else []
+    academic_query = f"{format_readable_disease(req.diseaseName)} {crop} crop disease management"
+    per_provider_limit = min(req.maxResults, settings.RESEARCH_MAX_RESULTS_PER_PROVIDER)
 
-    if status == "COMPLETED" and validated_sources:
-        report = build_bengali_report(req.diseaseName, crop, req.confidence, False, validated_sources)
-        return DiseaseResearchResponse(
-            researchStatus="COMPLETED",
-            analysisId=req.analysisId,
-            diseaseName=req.diseaseName,
-            cropName=crop,
-            isHealthy=False,
-            lowConfidenceWarning=low_conf,
-            queriesUsed=queries,
-            sources=validated_sources,
-            bengaliReport=report,
-            seleniumVersion=sel_ver,
-            browserInfo=browser_info,
-            searchProvidersAttempted=providers_attempted,
-            successfulProvider="google_selenium",
-            fallbackUsed=False,
-            fallbackReason=None,
-            sourceCount=len(raw_sources),
-            validatedSourceCount=len(validated_sources),
-        )
+    bd_outcome = BangladeshAgriProvider().get_references(crop)
+    bamis_status = dict(bd_outcome.metadata.get("bamisStatus") or {})
 
-    fallback_reason = err_code or f"SELENIUM_{status}"
-    providers_attempted.append("tavily")
-    tavily_outcome = TavilySearchProvider().search(
-        queries,
-        max_results=req.maxResults,
-        domain_classifier=classify_domain_tier,
+    with ThreadPoolExecutor(max_workers=max(2, min(4, settings.RESEARCH_MAX_WORKERS))) as pool:
+        web_fut = pool.submit(_run_web_search_track, queries, req.maxResults)
+        oa_fut = pool.submit(OpenAlexProvider().search, academic_query, per_provider_limit)
+        s2_fut = pool.submit(SemanticScholarProvider().search, academic_query, per_provider_limit)
+
+        web_res = web_fut.result()
+        oa_out = oa_fut.result()
+        s2_out = s2_fut.result()
+
+    providers_attempted: list[str] = list(web_res["attempted"]) + ["openalex", "semantic_scholar"]
+    successful_providers: list[str] = list(web_res["succeeded"])
+    failed_providers: list[str] = list(web_res["failed"])
+    failure_reasons: dict[str, str] = dict(web_res["failure_reasons"])
+
+    raw_papers: list[ResearchPaper] = []
+    raw_sources: list[ResearchSource] = list(web_res["sources"])
+
+    for acad_out in (oa_out, s2_out):
+        if acad_out.ok:
+            successful_providers.append(acad_out.provider)
+            raw_papers.extend(acad_out.papers)
+            raw_sources.extend(acad_out.sources)
+        else:
+            failed_providers.append(acad_out.provider)
+            failure_reasons[acad_out.provider] = acad_out.reason
+
+    # Crossref DOI metadata verification & enrichment on top 4 unique DOIs
+    papers_with_doi = [p for p in raw_papers if p.doi][:4]
+    if papers_with_doi:
+        providers_attempted.append("crossref")
+        crossref = CrossrefProvider()
+        cr_any_ok = False
+        cr_fail_reason: str | None = None
+        for p in papers_with_doi:
+            ok_cr, cr_reason = crossref.verify_and_enrich(p)
+            if ok_cr:
+                cr_any_ok = True
+            elif cr_fail_reason is None:
+                cr_fail_reason = cr_reason
+        if cr_any_ok:
+            successful_providers.append("crossref")
+        else:
+            failed_providers.append("crossref")
+            failure_reasons["crossref"] = cr_fail_reason or "unavailable"
+
+    ranked_papers, duplicate_count = _deduplicate_and_rank_papers(
+        raw_papers, req.diseaseName, crop, req.maxResults
     )
 
-    if tavily_outcome.ok:
-        tavily_validated = _validate_and_rank_sources(tavily_outcome.sources, req.maxResults)
-        if tavily_validated:
-            report = build_bengali_report(req.diseaseName, crop, req.confidence, False, tavily_validated)
+    providers_attempted.append("bangladesh_agri_official")
+    if bd_outcome.ok:
+        successful_providers.append("bangladesh_agri_official")
+
+    non_portal_sources = _validate_and_rank_sources(raw_sources, req.maxResults)
+    if non_portal_sources:
+        combined_sources = _validate_and_rank_sources(
+            non_portal_sources + bd_outcome.sources[:2], req.maxResults + 2
+        )
+    else:
+        combined_sources = []
+
+    evidence_quality = _compute_evidence_quality(ranked_papers, combined_sources)
+    has_real_evidence = bool(non_portal_sources or ranked_papers)
+
+    if not has_real_evidence:
+        tavily_reason = web_res.get("tavily_reason", "")
+        all_zero = (
+            web_res.get("selenium_status") != "BLOCKED"
+            and tavily_reason in ("zero_results", "missing_api_key", "")
+        )
+        if all_zero or (oa_out.reason == "zero_results" or s2_out.reason == "zero_results"):
+            insufficient_report = build_bengali_report(req.diseaseName, crop, req.confidence, False, [])
             return DiseaseResearchResponse(
-                researchStatus="COMPLETED",
+                researchStatus="INSUFFICIENT_EVIDENCE",
                 analysisId=req.analysisId,
                 diseaseName=req.diseaseName,
                 cropName=crop,
                 isHealthy=False,
                 lowConfidenceWarning=low_conf,
                 queriesUsed=queries,
-                sources=tavily_validated,
-                bengaliReport=report,
-                seleniumVersion=sel_ver,
-                browserInfo=browser_info,
-                searchProvidersAttempted=providers_attempted,
-                successfulProvider="tavily",
-                fallbackUsed=True,
-                fallbackReason=fallback_reason,
-                sourceCount=len(tavily_outcome.sources),
-                validatedSourceCount=len(tavily_validated),
+                sources=[],
+                sourceReferences=[],
+                researchPapers=[],
+                bengaliReport=insufficient_report,
+                errorCode="INSUFFICIENT_EVIDENCE",
+                errorMessage="No verified sources or academic papers matched this query across active providers.",
+                seleniumVersion=web_res["sel_ver"],
+                browserInfo=web_res["browser_info"],
+                searchProvidersAttempted=web_res["attempted"],
+                successfulProvider=None,
+                fallbackUsed=bool(web_res["fallback_used"]),
+                fallbackReason=web_res["fallback_reason"],
+                sourceCount=0,
+                validatedSourceCount=0,
+                providersAttempted=providers_attempted,
+                successfulProviders=successful_providers,
+                failedProviders=failed_providers,
+                providerFailureReasons=failure_reasons,
+                duplicateCount=duplicate_count,
+                evidenceQuality="INSUFFICIENT",
+                bamisStatus=bamis_status,
             )
 
-    if tavily_outcome.reason == "zero_results" or (tavily_outcome.ok and not tavily_outcome.sources):
-        insufficient_report = build_bengali_report(req.diseaseName, crop, req.confidence, False, [])
+        final_status = "BLOCKED" if web_res.get("selenium_status") == "BLOCKED" else "FAILED"
+        fallback_reason = web_res.get("fallback_reason") or "SELENIUM_FAILED"
+        err_code = f"{fallback_reason}+TAVILY_{str(tavily_reason).upper()}" if tavily_reason else fallback_reason
         return DiseaseResearchResponse(
-            researchStatus="INSUFFICIENT_EVIDENCE",
+            researchStatus=final_status,
             analysisId=req.analysisId,
             diseaseName=req.diseaseName,
             cropName=crop,
@@ -429,44 +678,63 @@ def run_disease_research(req: DiseaseResearchRequest) -> DiseaseResearchResponse
             lowConfidenceWarning=low_conf,
             queriesUsed=queries,
             sources=[],
-            bengaliReport=insufficient_report,
-            errorCode="INSUFFICIENT_EVIDENCE",
-            errorMessage="Neither Selenium Google Search nor Tavily returned usable agricultural sources.",
-            seleniumVersion=sel_ver,
-            browserInfo=browser_info,
-            searchProvidersAttempted=providers_attempted,
+            sourceReferences=[],
+            researchPapers=[],
+            bengaliReport=None,
+            errorCode=err_code,
+            errorMessage="Search and academic providers could not collect usable sources. Disease prediction remains valid.",
+            seleniumVersion=web_res["sel_ver"],
+            browserInfo=web_res["browser_info"],
+            searchProvidersAttempted=web_res["attempted"],
             successfulProvider=None,
-            fallbackUsed=True,
+            fallbackUsed=bool(web_res["fallback_used"]),
             fallbackReason=fallback_reason,
             sourceCount=0,
             validatedSourceCount=0,
+            providersAttempted=providers_attempted,
+            successfulProviders=successful_providers,
+            failedProviders=failed_providers,
+            providerFailureReasons=failure_reasons,
+            duplicateCount=duplicate_count,
+            evidenceQuality="INSUFFICIENT",
+            bamisStatus=bamis_status,
         )
 
-    final_status = "BLOCKED" if status == "BLOCKED" and tavily_outcome.reason == "missing_api_key" else (
-        "BLOCKED" if status == "BLOCKED" else "FAILED"
+    report = build_bengali_report(req.diseaseName, crop, req.confidence, False, combined_sources)
+    primary_provider = web_res["successful_provider"] or (
+        "openalex" if oa_out.ok else ("semantic_scholar" if s2_out.ok else None)
     )
-    msg = (
-        f"Primary Google Search ({fallback_reason}) and Tavily fallback ({tavily_outcome.reason}) "
-        "could not collect verified agricultural sources. Disease prediction remains valid."
-    )
-    return DiseaseResearchResponse(
-        researchStatus=final_status,
+    resp = DiseaseResearchResponse(
+        researchStatus="COMPLETED",
         analysisId=req.analysisId,
         diseaseName=req.diseaseName,
         cropName=crop,
         isHealthy=False,
         lowConfidenceWarning=low_conf,
         queriesUsed=queries,
-        sources=[],
-        bengaliReport=None,
-        errorCode=f"{fallback_reason}+TAVILY_{tavily_outcome.reason.upper()}",
-        errorMessage=msg,
-        seleniumVersion=sel_ver,
-        browserInfo=browser_info,
-        searchProvidersAttempted=providers_attempted,
-        successfulProvider=None,
-        fallbackUsed=True,
-        fallbackReason=fallback_reason,
-        sourceCount=0,
-        validatedSourceCount=0,
+        sources=combined_sources,
+        sourceReferences=combined_sources,
+        researchPapers=ranked_papers,
+        bengaliReport=report,
+        seleniumVersion=web_res["sel_ver"],
+        browserInfo=web_res["browser_info"],
+        searchProvidersAttempted=web_res["attempted"],
+        successfulProvider=primary_provider,
+        fallbackUsed=bool(web_res["fallback_used"]),
+        fallbackReason=web_res["fallback_reason"],
+        sourceCount=len(raw_sources) + len(raw_papers),
+        validatedSourceCount=len(combined_sources) + len(ranked_papers),
+        providersAttempted=providers_attempted,
+        successfulProviders=successful_providers,
+        failedProviders=failed_providers,
+        providerFailureReasons=failure_reasons,
+        duplicateCount=duplicate_count,
+        evidenceQuality=evidence_quality,
+        bamisStatus=bamis_status,
     )
+    if settings.RESEARCH_CACHE_TTL_SEC > 0:
+        with _CACHE_LOCK:
+            if len(_RESEARCH_CACHE) >= 64:
+                _RESEARCH_CACHE.clear()
+            _RESEARCH_CACHE[cache_key] = (now_mono, resp)
+    return resp

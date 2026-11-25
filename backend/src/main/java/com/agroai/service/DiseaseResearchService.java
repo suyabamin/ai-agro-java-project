@@ -158,6 +158,16 @@ public class DiseaseResearchService {
             report.put("fallbackReason", aiResp.get("fallbackReason"));
             report.put("sourceCount", aiResp.getOrDefault("sourceCount", 0));
             report.put("validatedSourceCount", aiResp.getOrDefault("validatedSourceCount", 0));
+            report.put("providersAttempted", aiResp.getOrDefault("providersAttempted", List.of()));
+            report.put("successfulProviders", aiResp.getOrDefault("successfulProviders", List.of()));
+            report.put("failedProviders", aiResp.getOrDefault("failedProviders", List.of()));
+            report.put("providerFailureReasons", aiResp.getOrDefault("providerFailureReasons", Map.of()));
+            report.put("duplicateCount", aiResp.getOrDefault("duplicateCount", 0));
+            report.put("researchPapers", aiResp.getOrDefault("researchPapers", List.of()));
+            report.put("sourceReferences", aiResp.getOrDefault("sourceReferences", aiResp.getOrDefault("sources", List.of())));
+            report.put("evidenceQuality", aiResp.getOrDefault("evidenceQuality", "LIMITED"));
+            report.put("bamisStatus", aiResp.getOrDefault("bamisStatus", Map.of()));
+            report.put("retrievalTimestamp", aiResp.getOrDefault("retrievalTimestamp", Instant.now().toString()));
             report.put("retrievedAt", aiResp.get("retrievedAt") != null ? String.valueOf(aiResp.get("retrievedAt")) : Instant.now().toString());
         } catch (Exception e) {
             log.warn("Disease research failed for analysis={} research={}: {}", analysisId, researchId, e.getMessage());
@@ -201,6 +211,15 @@ public class DiseaseResearchService {
                 snapshot.put("fallbackReason", completedReport.get("fallbackReason") != null ? completedReport.get("fallbackReason") : "");
                 snapshot.put("sourceCount", completedReport.getOrDefault("sourceCount", 0));
                 snapshot.put("validatedSourceCount", completedReport.getOrDefault("validatedSourceCount", 0));
+                snapshot.put("providersAttempted", completedReport.getOrDefault("providersAttempted", List.of()));
+                snapshot.put("successfulProviders", completedReport.getOrDefault("successfulProviders", List.of()));
+                snapshot.put("failedProviders", completedReport.getOrDefault("failedProviders", List.of()));
+                snapshot.put("providerFailureReasons", completedReport.getOrDefault("providerFailureReasons", Map.of()));
+                snapshot.put("duplicateCount", completedReport.getOrDefault("duplicateCount", 0));
+                snapshot.put("researchPapers", completedReport.getOrDefault("researchPapers", List.of()));
+                snapshot.put("evidenceQuality", completedReport.getOrDefault("evidenceQuality", "LIMITED"));
+                snapshot.put("bamisStatus", completedReport.getOrDefault("bamisStatus", Map.of()));
+                snapshot.put("retrievalTimestamp", completedReport.getOrDefault("retrievalTimestamp", ""));
                 snapshot.put("retrievedAt", completedReport.get("retrievedAt") != null ? completedReport.get("retrievedAt") : "");
                 latest.put("researchReport", snapshot);
             }

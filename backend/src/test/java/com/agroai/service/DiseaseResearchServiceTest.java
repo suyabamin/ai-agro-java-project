@@ -52,6 +52,13 @@ class DiseaseResearchServiceTest {
         aiResearch.put("fallbackReason", "GOOGLE_CAPTCHA_BLOCKED");
         aiResearch.put("sourceCount", 1);
         aiResearch.put("validatedSourceCount", 1);
+        aiResearch.put("providersAttempted", List.of("google_selenium", "tavily", "openalex", "crossref"));
+        aiResearch.put("successfulProviders", List.of("tavily", "openalex", "crossref"));
+        aiResearch.put("failedProviders", List.of("google_selenium"));
+        aiResearch.put("duplicateCount", 1);
+        aiResearch.put("evidenceQuality", "HIGH");
+        aiResearch.put("researchPapers", List.of(Map.of("paperId", "doi:10.1000/potato", "title", "Potato Early Blight", "doiVerificationStatus", "VERIFIED_MATCH")));
+        aiResearch.put("bamisStatus", Map.of("bamisApiAvailable", false));
         aiResearch.put("sources", List.of(Map.of("title", "BARI Potato", "url", "https://bari.gov.bd/potato", "domain", "bari.gov.bd", "provider", "tavily")));
         aiResearch.put("bengaliReport", Map.of("summaryBn", "আলু ফসলে প্রাথমিক তথ্য পাওয়া গেছে।"));
         when(ai.researchDisease(anyMap())).thenReturn(aiResearch);
@@ -63,6 +70,8 @@ class DiseaseResearchServiceTest {
         assertEquals("tavily", report.get("successfulProvider"));
         assertEquals(true, report.get("fallbackUsed"));
         assertEquals("GOOGLE_CAPTCHA_BLOCKED", report.get("fallbackReason"));
+        assertEquals("HIGH", report.get("evidenceQuality"));
+        assertEquals(1, report.get("duplicateCount"));
         assertEquals("COMPLETED", analysis.get("status")); // disease analysis stays COMPLETED
         assertEquals("COMPLETED", analysis.get("researchStatus"));
         assertNotNull(analysis.get("researchReport"));
@@ -70,6 +79,7 @@ class DiseaseResearchServiceTest {
         Map<String, Object> snap = (Map<String, Object>) analysis.get("researchReport");
         assertEquals("tavily", snap.get("successfulProvider"));
         assertEquals(true, snap.get("fallbackUsed"));
+        assertEquals("HIGH", snap.get("evidenceQuality"));
         verify(repository, atLeastOnce()).createWithActivity(eq(DiseaseResearchService.COLLECTION), anyString(), anyMap(), anyMap());
     }
 

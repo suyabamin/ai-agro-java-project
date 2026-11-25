@@ -19,6 +19,28 @@ export interface ResearchSourceItem {
   provider?: string;
 }
 
+export interface ResearchPaperItem {
+  paperId?: string;
+  title?: string;
+  authors?: string[];
+  publicationYear?: number;
+  doi?: string;
+  journal?: string;
+  abstract?: string;
+  url?: string;
+  domain?: string;
+  isOpenAccess?: boolean;
+  citationCount?: number;
+  sourceProvider?: string;
+  additionalProviders?: string[];
+  authoritativeTier?: string;
+  metadataValidated?: boolean;
+  sourceIdentityVerified?: boolean;
+  scientificEvidenceAssessed?: boolean;
+  doiVerificationStatus?: string;
+  evidenceRank?: number;
+}
+
 export interface BengaliResearchReportItem {
   summaryBn?: string;
   overviewBn?: string;
@@ -99,6 +121,16 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
   const lowConfWarning = Boolean(researchSnapshot?.lowConfidenceWarning);
   const successfulProvider = researchSnapshot?.successfulProvider ? String(researchSnapshot.successfulProvider) : null;
   const fallbackUsed = Boolean(researchSnapshot?.fallbackUsed);
+  const researchPapers = Array.isArray(researchSnapshot?.researchPapers)
+    ? (researchSnapshot?.researchPapers as ResearchPaperItem[])
+    : [];
+  const successfulProviders = Array.isArray(researchSnapshot?.successfulProviders)
+    ? (researchSnapshot?.successfulProviders as string[])
+    : [];
+  const failedProviders = Array.isArray(researchSnapshot?.failedProviders)
+    ? (researchSnapshot?.failedProviders as string[])
+    : [];
+  const evidenceQuality = researchSnapshot?.evidenceQuality ? String(researchSnapshot.evidenceQuality) : null;
 
   return (
     <div className="p-4 rounded-xl bg-surface-container-low border border-outline-variant/30 space-y-3">
@@ -253,14 +285,31 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
 
             {(researchStatus === 'COMPLETED' || researchStatus === 'SKIPPED_HEALTHY' || researchStatus === 'INSUFFICIENT_EVIDENCE') && bengaliReport && (
               <div className="space-y-2 text-xs text-on-surface">
-                {successfulProvider && (
+                {(successfulProvider || successfulProviders.length > 0 || evidenceQuality) && (
                   <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-on-surface-variant">
-                    <span className="px-2 py-0.5 rounded bg-surface-container font-semibold">
-                      Source Provider: {successfulProvider === 'tavily' ? 'Tavily Search' : 'Google Selenium'}
-                    </span>
+                    {successfulProvider && (
+                      <span className="px-2 py-0.5 rounded bg-surface-container font-semibold">
+                        Primary Provider: {successfulProvider === 'tavily' ? 'Tavily Search' : successfulProvider}
+                      </span>
+                    )}
+                    {successfulProviders.length > 0 && (
+                      <span className="px-2 py-0.5 rounded bg-primary/10 text-primary font-semibold">
+                        Providers ({successfulProviders.length}): {successfulProviders.join(', ')}
+                      </span>
+                    )}
+                    {evidenceQuality && (
+                      <span className="px-2 py-0.5 rounded bg-surface-container font-mono font-semibold">
+                        Evidence: {evidenceQuality}
+                      </span>
+                    )}
                     {fallbackUsed && (
                       <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-semibold">
                         Fallback Active
+                      </span>
+                    )}
+                    {failedProviders.length > 0 && (
+                      <span className="px-2 py-0.5 rounded bg-surface-container text-on-surface-variant">
+                        Partial unavailable: {failedProviders.join(', ')}
                       </span>
                     )}
                   </div>
@@ -282,6 +331,42 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                 {bengaliReport.whenToConsultBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>কখন কৃষি কর্মকর্তার পরামর্শ প্রয়োজন:</strong> {bengaliReport.whenToConsultBn}</p>}
                 {bengaliReport.referencesBn && <p className="text-[11px] text-on-surface-variant leading-relaxed"><strong>তথ্যসূত্র:</strong> {bengaliReport.referencesBn}</p>}
                 {bengaliReport.cautionBn && <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed"><strong>সতর্কতা:</strong> {bengaliReport.cautionBn}</p>}
+
+                {researchPapers.length > 0 && (
+                  <div className="pt-2 border-t border-outline-variant/20 space-y-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block">
+                      Scholarly Research Papers ({researchPapers.length})
+                    </span>
+                    <ul className="space-y-1.5">
+                      {researchPapers.map((paper, pIdx) => (
+                        <li key={`${paper.paperId || pIdx}`} className="p-2 rounded-lg bg-surface-container border border-outline-variant/20 text-[11px] space-y-0.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <a
+                              href={paper.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary font-semibold hover:underline"
+                            >
+                              {paper.title}
+                            </a>
+                            <span className="font-mono text-[10px] text-on-surface-variant">
+                              {paper.sourceProvider}
+                              {paper.doiVerificationStatus && paper.doiVerificationStatus !== 'NOT_APPLICABLE'
+                                ? ` • DOI: ${paper.doiVerificationStatus}`
+                                : ''}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-on-surface-variant">
+                            {(paper.authors || []).slice(0, 3).join(', ')}
+                            {paper.publicationYear ? ` (${paper.publicationYear})` : ''}
+                            {paper.journal ? ` • ${paper.journal}` : ''}
+                            {paper.doi ? ` • doi:${paper.doi}` : ''}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
 
                 {researchSources.length > 0 && (
                   <div className="pt-2 border-t border-outline-variant/20 space-y-1.5">

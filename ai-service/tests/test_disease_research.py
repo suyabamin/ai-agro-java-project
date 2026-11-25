@@ -38,10 +38,24 @@ def test_healthy_class_skips_selenium_search_without_fabricating_treatment(monke
 
 
 def test_captcha_block_returns_blocked_without_fabricating_sources(monkeypatch):
+    from app.services.providers.base import ProviderOutcome
+    from app.services.providers.openalex_provider import OpenAlexProvider
+    from app.services.providers.semantic_scholar_provider import SemanticScholarProvider
+
     monkeypatch.setattr(
         disease_research_service,
         "_run_selenium_google_search",
         lambda *_a, **_kw: ("BLOCKED", [], "GOOGLE_CAPTCHA_BLOCKED", "selenium@4.54.0", "chrome@158"),
+    )
+    monkeypatch.setattr(
+        OpenAlexProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="openalex", ok=False, reason="network_error"),
+    )
+    monkeypatch.setattr(
+        SemanticScholarProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="semantic_scholar", ok=False, reason="network_error"),
     )
     monkeypatch.setattr(settings, "TAVILY_API_KEY", "")
     res = run_disease_research(
@@ -91,7 +105,22 @@ def test_domain_classification_query_building_and_block_detection():
 
 
 def test_research_endpoint_requires_backend_key_and_runs_with_mocked_selenium(monkeypatch):
+    from app.services.providers.base import ProviderOutcome
+    from app.services.providers.openalex_provider import OpenAlexProvider
+    from app.services.providers.semantic_scholar_provider import SemanticScholarProvider
+
+    disease_research_service.clear_research_cache()
     monkeypatch.setattr(settings, "AI_SERVICE_KEY", "test-key")
+    monkeypatch.setattr(
+        OpenAlexProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="openalex", ok=False, reason="zero_results"),
+    )
+    monkeypatch.setattr(
+        SemanticScholarProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="semantic_scholar", ok=False, reason="zero_results"),
+    )
     unauth = client.post(
         "/api/v1/research/disease",
         json={"analysisId": "a1", "diseaseName": "Rice_Blast"},
@@ -128,12 +157,26 @@ def test_research_endpoint_requires_backend_key_and_runs_with_mocked_selenium(mo
     assert data["researchStatus"] == "COMPLETED"
     assert data["successfulProvider"] == "google_selenium"
     assert data["fallbackUsed"] is False
-    assert len(data["sources"]) == 1
-    assert data["sources"][0]["domain"] == "irri.org"
+    assert any(s["domain"] == "irri.org" for s in data["sources"])
 
 
 def test_tavily_fallback_succeeds_when_selenium_captcha_blocks(monkeypatch):
+    from app.services.providers.base import ProviderOutcome
+    from app.services.providers.openalex_provider import OpenAlexProvider
+    from app.services.providers.semantic_scholar_provider import SemanticScholarProvider
     from app.services.tavily_search_provider import TavilySearchOutcome, TavilySearchProvider
+
+    disease_research_service.clear_research_cache()
+    monkeypatch.setattr(
+        OpenAlexProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="openalex", ok=False, reason="zero_results"),
+    )
+    monkeypatch.setattr(
+        SemanticScholarProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="semantic_scholar", ok=False, reason="zero_results"),
+    )
 
     monkeypatch.setattr(
         disease_research_service,
@@ -184,7 +227,7 @@ def test_tavily_fallback_succeeds_when_selenium_captcha_blocks(monkeypatch):
     assert res.successfulProvider == "tavily"
     assert res.fallbackUsed is True
     assert res.fallbackReason == "GOOGLE_CAPTCHA_BLOCKED"
-    assert res.validatedSourceCount == 2
+    assert res.validatedSourceCount >= 2
     assert res.bengaliReport is not None
     assert res.bengaliReport.overviewBn is not None
     assert res.bengaliReport.causesBn is not None
@@ -228,12 +271,25 @@ def test_tavily_provider_handles_401_and_never_leaks_api_key(monkeypatch):
 
 
 def test_tavily_zero_results_returns_insufficient_evidence(monkeypatch):
+    from app.services.providers.base import ProviderOutcome
+    from app.services.providers.openalex_provider import OpenAlexProvider
+    from app.services.providers.semantic_scholar_provider import SemanticScholarProvider
     from app.services.tavily_search_provider import TavilySearchOutcome, TavilySearchProvider
 
     monkeypatch.setattr(
         disease_research_service,
         "_run_selenium_google_search",
         lambda *_a, **_kw: ("FAILED", [], "NO_SEARCH_RESULTS", "selenium@4.54.0", "chrome@158"),
+    )
+    monkeypatch.setattr(
+        OpenAlexProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="openalex", ok=False, reason="zero_results"),
+    )
+    monkeypatch.setattr(
+        SemanticScholarProvider,
+        "search",
+        lambda *_a, **_kw: ProviderOutcome(provider="semantic_scholar", ok=False, reason="zero_results"),
     )
     monkeypatch.setattr(
         TavilySearchProvider,

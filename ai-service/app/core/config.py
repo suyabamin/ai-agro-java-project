@@ -25,6 +25,12 @@ class Settings:
     MAX_IMAGE_SIDE: int = int(os.getenv("AGROAI_MAX_IMAGE_SIDE", "10000"))
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
     TAVILY_TIMEOUT_SEC: float = float(os.getenv("AGROAI_TAVILY_TIMEOUT_SEC", "15.0"))
+    OPENALEX_EMAIL: str = os.getenv("OPENALEX_EMAIL", "")
+    SEMANTIC_SCHOLAR_API_KEY: str = os.getenv("SEMANTIC_SCHOLAR_API_KEY", "")
+    RESEARCH_PROVIDER_TIMEOUT_SEC: float = float(os.getenv("AGROAI_RESEARCH_PROVIDER_TIMEOUT_SEC", "12.0"))
+    RESEARCH_MAX_RESULTS_PER_PROVIDER: int = int(os.getenv("AGROAI_RESEARCH_MAX_RESULTS_PER_PROVIDER", "5"))
+    RESEARCH_MAX_WORKERS: int = int(os.getenv("AGROAI_RESEARCH_MAX_WORKERS", "4"))
+    RESEARCH_CACHE_TTL_SEC: int = int(os.getenv("AGROAI_RESEARCH_CACHE_TTL_SEC", "300"))
 
 
 settings = Settings()

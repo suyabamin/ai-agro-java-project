@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +24,39 @@ class ResearchSource(BaseModel):
     authoritativeTier: Literal["BANGLADESH_GOV_RESEARCH", "INTERNATIONAL_AGRI", "ACADEMIC", "GENERAL"]
     retrievedAt: str
     provider: str = "google_selenium"
+
+
+class ResearchPaper(BaseModel):
+    paperId: str
+    title: str
+    authors: list[str] = Field(default_factory=list)
+    publicationYear: int | None = None
+    doi: str | None = None
+    journal: str | None = None
+    abstract: str | None = None
+    url: str
+    domain: str
+    isOpenAccess: bool | None = None
+    citationCount: int | None = None
+    sourceProvider: str
+    additionalProviders: list[str] = Field(default_factory=list)
+    authoritativeTier: Literal["BANGLADESH_GOV_RESEARCH", "INTERNATIONAL_AGRI", "ACADEMIC", "GENERAL"]
+    # Four distinct validation stages (never collapsed into a single flag):
+    searchResultRetrieved: bool = True
+    metadataValidated: bool = False
+    sourceIdentityVerified: bool = False
+    scientificEvidenceAssessed: bool = False
+    doiVerificationStatus: Literal[
+        "VERIFIED_MATCH",
+        "METADATA_MISMATCH",
+        "DOI_NOT_FOUND",
+        "UNVERIFIED",
+        "NOT_APPLICABLE",
+    ] = "NOT_APPLICABLE"
+    doiVerificationNote: str | None = None
+    relevanceScore: float = 0.0
+    evidenceRank: int = 0
+    retrievedAt: str
 
 
 class BengaliResearchReport(BaseModel):
@@ -51,15 +84,27 @@ class DiseaseResearchResponse(BaseModel):
     lowConfidenceWarning: bool = False
     queriesUsed: list[str] = Field(default_factory=list)
     sources: list[ResearchSource] = Field(default_factory=list)
+    sourceReferences: list[ResearchSource] = Field(default_factory=list)
+    researchPapers: list[ResearchPaper] = Field(default_factory=list)
     bengaliReport: BengaliResearchReport | None = None
     errorCode: str | None = None
     errorMessage: str | None = None
     seleniumVersion: str | None = None
     browserInfo: str | None = None
+    # Existing provider fields (backward compatible)
     searchProvidersAttempted: list[str] = Field(default_factory=list)
     successfulProvider: str | None = None
     fallbackUsed: bool = False
     fallbackReason: str | None = None
     sourceCount: int = 0
     validatedSourceCount: int = 0
+    # M1 multi-source provider metadata
+    providersAttempted: list[str] = Field(default_factory=list)
+    successfulProviders: list[str] = Field(default_factory=list)
+    failedProviders: list[str] = Field(default_factory=list)
+    providerFailureReasons: dict[str, str] = Field(default_factory=dict)
+    duplicateCount: int = 0
+    evidenceQuality: Literal["HIGH", "MODERATE", "LIMITED", "INSUFFICIENT"] = "LIMITED"
+    bamisStatus: dict[str, Any] = Field(default_factory=dict)
+    retrievalTimestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     retrievedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
