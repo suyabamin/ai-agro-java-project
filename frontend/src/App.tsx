@@ -1,5 +1,7 @@
 import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider } from './context/AuthContext';
 import { FarmProvider } from './context/FarmContext';
 import { PublicLayout } from './components/layout/PublicLayout';
@@ -77,15 +79,19 @@ const MyApplicationsPage = lazy(() => import('./pages/MyApplicationsPage').then(
 
 export function App() {
   return (
-    <AuthProvider>
-      <FarmProvider>
-        <Router>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <FarmProvider>
+            <Router>
           <RouteTransitionLoader />
           <Suspense fallback={<PageSkeletonLoader />}>
             <Routes>
+              {/* Landing Page (dedicated full-bleed layout) */}
+              <Route path="/" element={<LandingPage />} />
+
               {/* Public Routes */}
               <Route element={<PublicLayout />}>
-                <Route path="/" element={<LandingPage />} />
                 <Route path="/explore" element={<ExploreFarmsPage />} />
                 <Route path="/jobs" element={<JobsPage />} />
                 <Route path="/about" element={<AboutPage />} />
@@ -190,6 +196,8 @@ export function App() {
         </Router>
       </FarmProvider>
     </AuthProvider>
+  </LanguageProvider>
+</ThemeProvider>
   );
 }
 

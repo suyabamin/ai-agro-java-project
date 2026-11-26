@@ -1,10 +1,99 @@
+:root {
+  --color-background: 247 246 242;
+  --color-surface: 247 246 242;
+  --color-surface-container-lowest: 255 255 255;
+  --color-surface-container-low: 250 249 245;
+  --color-surface-container: 243 240 232;
+  --color-surface-container-high: 236 232 222;
+  --color-surface-container-highest: 228 223 211;
+  --color-surface-bright: 253 252 249;
+  --color-surface-dim: 235 230 220;
+  --color-surface-variant: 236 232 222;
+  --color-on-background: 28 25 20;
+  --color-on-surface: 28 25 20;
+  --color-on-surface-variant: 94 88 78;
+  --color-outline: 138 131 118;
+  --color-outline-variant: 226 221 213;
+  --color-primary: 27 77 50;
+  --color-on-primary: 255 255 255;
+  --color-primary-container: 27 77 50;
+  --color-on-primary-container: 244 250 246;
+  --color-primary-fixed: 205 232 216;
+  --color-primary-fixed-dim: 162 212 181;
+  --color-secondary: 45 106 79;
+  --color-on-secondary: 255 255 255;
+  --color-secondary-container: 227 236 230;
+  --color-on-secondary-container: 27 77 50;
+  --color-secondary-fixed: 211 229 219;
+  --color-secondary-fixed-dim: 134 179 153;
+  --color-error: 186 26 26;
+  --color-on-error: 255 255 255;
+  --color-error-container: 255 218 214;
+  --color-on-error-container: 147 0 10;
+  --color-tertiary: 61 90 40;
+  --color-on-tertiary: 255 255 255;
+  --color-tertiary-container: 74 107 50;
+  --color-on-tertiary-container: 242 247 236;
+  --color-tertiary-fixed: 196 224 173;
+  --color-tertiary-fixed-dim: 153 186 130;
+  --color-surface-tint: 27 77 50;
+  --color-inverse-surface: 45 42 36;
+  --color-inverse-on-surface: 247 246 242;
+  --color-inverse-primary: 123 196 152;
+}
+
+.dark {
+  --color-background: 19 22 20;
+  --color-surface: 19 22 20;
+  --color-surface-container-lowest: 24 28 25;
+  --color-surface-container-low: 29 34 30;
+  --color-surface-container: 34 40 35;
+  --color-surface-container-high: 41 48 42;
+  --color-surface-container-highest: 49 57 50;
+  --color-surface-bright: 46 54 47;
+  --color-surface-dim: 16 18 17;
+  --color-surface-variant: 41 48 42;
+  --color-on-background: 229 227 220;
+  --color-on-surface: 229 227 220;
+  --color-on-surface-variant: 163 159 149;
+  --color-outline: 114 121 115;
+  --color-outline-variant: 42 50 43;
+  --color-primary: 82 163 115;
+  --color-on-primary: 8 32 18;
+  --color-primary-container: 27 77 50;
+  --color-on-primary-container: 205 232 216;
+  --color-primary-fixed: 35 74 52;
+  --color-primary-fixed-dim: 24 59 39;
+  --color-secondary: 104 166 130;
+  --color-on-secondary: 11 38 24;
+  --color-secondary-container: 31 51 38;
+  --color-on-secondary-container: 185 226 203;
+  --color-secondary-fixed: 35 74 52;
+  --color-secondary-fixed-dim: 104 166 130;
+  --color-error: 242 139 130;
+  --color-on-error: 68 20 17;
+  --color-error-container: 59 24 22;
+  --color-on-error-container: 252 232 230;
+  --color-tertiary: 131 176 99;
+  --color-on-tertiary: 23 40 9;
+  --color-tertiary-container: 39 61 23;
+  --color-on-tertiary-container: 212 234 191;
+  --color-tertiary-fixed: 39 61 23;
+  --color-tertiary-fixed-dim: 131 176 99;
+  --color-surface-tint: 82 163 115;
+  --color-inverse-surface: 247 246 242;
+  --color-inverse-on-surface: 28 25 20;
+  --color-inverse-primary: 35 74 52;
+}
+
 @layer base {
   html, body {
     margin: 0;
     padding: 0;
-    background-color: #e8ffef;
-    color: #0c1f16;
+    background-color: rgb(var(--color-background));
+    color: rgb(var(--color-on-surface));
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
@@ -43,10 +132,112 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #becabd;
+  background: #d5cfc4;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6f7a6f;
+  background: #a8a092;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #38423a;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4d594f;
+}
+
+/* Landing page GPU-composited animations */
+@keyframes agroHeroFadeUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes agroFloatGentle {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -8px, 0);
+  }
+}
+
+@keyframes agroScanSweep {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate3d(0, 180px, 0);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.75;
+  }
+}
+
+.agro-hero-enter {
+  animation: agroHeroFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.agro-hero-enter-delay-1 {
+  animation: agroHeroFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
+}
+
+.agro-hero-enter-delay-2 {
+  animation: agroHeroFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
+}
+
+.agro-hero-enter-delay-3 {
+  animation: agroHeroFadeUp 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.28s both;
+}
+
+.agro-float-gentle {
+  animation: agroFloatGentle 6s ease-in-out infinite;
+}
+
+.agro-scan-sweep {
+  animation: agroScanSweep 3.8s ease-in-out infinite;
+}
+
+.agro-reveal {
+  opacity: 0;
+  transform: translate3d(0, 20px, 0);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1), transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.agro-reveal-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .agro-hero-enter,
+  .agro-hero-enter-delay-1,
+  .agro-hero-enter-delay-2,
+  .agro-hero-enter-delay-3,
+  .agro-float-gentle,
+  .agro-scan-sweep {
+    animation: none !important;
+  }
+  .agro-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
 }
