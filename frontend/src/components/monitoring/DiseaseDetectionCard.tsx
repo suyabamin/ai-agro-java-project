@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { MonitoringRecord } from '../../services/monitoringService';
 import { StatusBadge } from '../ui/StatusBadge';
+import diseaseLeafImg from '../../assets/landing/disease-leaf-scan.jpg';
 import {
   DISEASE_UI_LANG_KEY,
   DISEASE_UI_STRINGS,
@@ -876,6 +877,211 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
           </section>
         </div>
       )}
+    </div>
+  );
+};
+
+interface DiseaseIntelligenceSummaryPanelProps {
+  analysis: MonitoringRecord | null;
+  fieldCropType?: string | null;
+  imagePreview?: string | null;
+  onViewFullAnalysis?: () => void;
+  onRetry?: () => void;
+}
+
+export const DiseaseIntelligenceSummaryPanel: React.FC<DiseaseIntelligenceSummaryPanelProps> = ({
+  analysis,
+  fieldCropType,
+  imagePreview,
+  onViewFullAnalysis,
+  onRetry,
+}) => {
+  const [lang, setLang] = useState<DiseaseUiLang>(() => getInitialDiseaseUiLang());
+  const ui = DISEASE_UI_STRINGS[lang];
+
+  const handleLangChange = (next: DiseaseUiLang) => {
+    setLang(next);
+    try {
+      localStorage.setItem(DISEASE_UI_LANG_KEY, next);
+    } catch {
+      // Ignore storage errors
+    }
+  };
+
+  const status = String(analysis?.status || 'NOT_REQUESTED').toUpperCase();
+  const analysisId = String(analysis?.analysisId || analysis?.id || '');
+  const diseaseRaw = analysis?.diseaseName || analysis?.predictedClass;
+  const diseaseName = diseaseRaw ? formatDiseaseLabel(String(diseaseRaw)) : null;
+  const cropLabel = analysis ? inferCropLabel(diseaseRaw ? String(diseaseRaw) : null, analysis) : null;
+  const confidencePct = parseConfidencePercent(analysis);
+  const researchSnapshot = (analysis?.researchReport as Record<string, unknown> | undefined) || undefined;
+  const bengaliReport = (researchSnapshot?.bengaliReport as BengaliResearchReportItem | undefined) || undefined;
+  const researchPapers = Array.isArray(researchSnapshot?.researchPapers)
+    ? (researchSnapshot?.researchPapers as ResearchPaperItem[])
+    : [];
+
+  const classification = extractDiseaseClassification(
+    diseaseRaw ? String(diseaseRaw) : null,
+    [
+      bengaliReport?.causesBn || '',
+      bengaliReport?.symptomsBn || '',
+      ...researchPapers.map((p) => `${p.title || ''} ${p.abstract || ''}`),
+    ]
+  );
+
+  const hasMismatch = Boolean(
+    fieldCropType &&
+      cropLabel &&
+      cropLabel.toLowerCase() !== 'crop' &&
+      fieldCropType.trim().toLowerCase() !== cropLabel.trim().toLowerCase()
+  );
+
+  return (
+    <div className="rounded-3xl bg-surface-container-lowest border border-outline-variant/35 shadow-sm overflow-hidden flex flex-col h-full">
+      {/* Prominent Dark-Green Header */}
+      <div className="px-5 py-3.5 bg-gradient-to-r from-[#0e3b24] to-[#175534] text-white flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="material-symbols-outlined text-[20px] text-emerald-300">verified_user</span>
+          <span className="text-sm font-extrabold tracking-tight">Disease Intelligence</span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            role="group"
+            aria-label="Disease Intelligence language switch"
+            className="inline-flex rounded-full bg-white/15 p-0.5 border border-white/20"
+          >
+            <button
+              type="button"
+              onClick={() => handleLangChange('bn')}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer transition-colors ${
+                lang === 'bn' ? 'bg-emerald-500 text-[#082415]' : 'text-emerald-100 hover:text-white'
+              }`}
+            >
+              {ui.langBn}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleLangChange('en')}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold cursor-pointer transition-colors ${
+                lang === 'en' ? 'bg-emerald-500 text-[#082415]' : 'text-emerald-100 hover:text-white'
+              }`}
+            >
+              {ui.langEn}
+            </button>
+          </div>
+          {analysisId && (
+            <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-white/15 text-emerald-100">
+              {analysisId.length > 18 ? `${analysisId.substring(0, 18)}...` : analysisId}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* White Card Body */}
+      <div className="p-5 flex-1 flex flex-col justify-between gap-4">
+        {!analysis ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-center py-6 space-y-2">
+            <span className="material-symbols-outlined text-[36px] text-on-surface-variant">biotech</span>
+            <p className="text-xs font-bold text-on-surface">
+              {lang === 'bn' ? 'এখনো কোনো রোগ শনাক্তকরণ করা হয়নি' : 'No Disease Detection Recorded Yet'}
+            </p>
+            <p className="text-[11px] text-on-surface-variant max-w-xs">
+              {lang === 'bn'
+                ? 'নিচের ফর্ম থেকে পাতার ছবি আপলোড করে রোগ শনাক্তকরণ ও গবেষণা প্রতিবেদন দেখুন।'
+                : 'Upload a crop leaf photograph below to run AI screening and retrieve evidence-based guidance.'}
+            </p>
+          </div>
+        ) : (status === 'FAILED' || status === 'MODEL_UNAVAILABLE') ? (
+          <div className="p-4 rounded-2xl bg-error/10 border border-error/30 space-y-2.5">
+            <p className="text-xs text-error font-semibold">
+              {String(analysis.errorMessage || analysis.failureReason || ui.modelUnavailableFallback)}
+            </p>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="px-3.5 py-1.5 rounded-xl bg-primary text-on-primary text-xs font-bold cursor-pointer"
+              >
+                {ui.retryAnalysis}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+            {/* Leaf Thumbnail with Reticle */}
+            <div className="sm:col-span-5 relative rounded-2xl overflow-hidden bg-surface-container-high h-44 sm:h-48 border border-outline-variant/25">
+              <img
+                src={imagePreview || diseaseLeafImg}
+                alt={diseaseName || 'Analyzed crop leaf'}
+                className="w-full h-full object-cover"
+              />
+              <div aria-hidden="true" className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-white/90 rounded-tl-sm pointer-events-none" />
+              <div aria-hidden="true" className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-white/90 rounded-tr-sm pointer-events-none" />
+              <div aria-hidden="true" className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-white/90 rounded-bl-sm pointer-events-none" />
+              <div aria-hidden="true" className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-white/90 rounded-br-sm pointer-events-none" />
+            </div>
+
+            {/* Summary Table */}
+            <div className="sm:col-span-7 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <StatusBadge status={status} />
+                <span className="text-xs font-extrabold text-primary">{ui.sectionSummary}</span>
+              </div>
+
+              <div className="rounded-xl border border-outline-variant/25 divide-y divide-outline-variant/20 text-xs bg-surface-container-low/60">
+                <div className="px-3 py-1.5 flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant font-medium">{ui.predictedDiseaseLabel}</span>
+                  <span className="font-extrabold text-on-surface text-right">{diseaseName || '—'}</span>
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant font-medium">{ui.rawClassLabel}</span>
+                  <span className="font-mono text-[11px] text-on-surface text-right truncate max-w-[160px]">
+                    {String(diseaseRaw || '—')}
+                  </span>
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant font-medium">{ui.scientificNameLabel}</span>
+                  <span className="italic font-semibold text-on-surface text-right">
+                    {classification.pathogenName || '—'}
+                  </span>
+                </div>
+                <div className="px-3 py-1.5 flex items-center justify-between gap-2">
+                  <span className="text-on-surface-variant font-medium">{ui.confidenceLabel}</span>
+                  <span className="font-extrabold text-primary tabular-nums">
+                    {confidencePct !== null ? `${confidencePct.toFixed(1)}%` : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {onViewFullAnalysis && (
+                <button
+                  type="button"
+                  onClick={onViewFullAnalysis}
+                  className="w-full h-9 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 text-primary font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors border border-emerald-500/25"
+                >
+                  <span>{lang === 'bn' ? 'সম্পূর্ণ বিশ্লেষণ ও গবেষণা দেখুন' : 'View Full Analysis & Research'}</span>
+                  <span className="material-symbols-outlined text-[15px]">arrow_downward</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hasMismatch && (
+          <div
+            role="alert"
+            className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/35 text-[11px] text-amber-900 dark:text-amber-200 flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[16px] text-amber-600 shrink-0">warning</span>
+            <span>
+              {lang === 'bn'
+                ? `সতর্কতা: জমি "${fieldCropType}" হিসেবে নিবন্ধিত, কিন্তু মডেল "${cropLabel}" শনাক্ত করেছে।`
+                : `Mismatch: Field is registered as "${fieldCropType}", while model detected "${cropLabel}".`}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

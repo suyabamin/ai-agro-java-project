@@ -12,8 +12,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { LoadingSkeleton } from '../components/ui/LoadingSkeleton';
 import {
   DiseaseDetectionCard,
-  formatDiseaseLabel,
-  parseConfidencePercent,
+  DiseaseIntelligenceSummaryPanel,
 } from '../components/monitoring/DiseaseDetectionCard';
 import {
   LeafDiseaseProcessingCard,
@@ -138,6 +137,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
   const [analyzingField, setAnalyzingField] = useState(false);
   const [latestAnalysis, setLatestAnalysis] = useState<MonitoringRecord | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   const pollTimerRef = useRef<number | null>(null);
 
@@ -149,11 +149,6 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       }
     };
   }, []);
-
-  // History State
-  const [recentTelemetry, setRecentTelemetry] = useState<MonitoringRecord[]>([]);
-  const [recentAnalyses, setRecentAnalyses] = useState<MonitoringRecord[]>([]);
-  const [historyTab, setHistoryTab] = useState<'analyses' | 'disease' | 'telemetry'>('analyses');
 
   const fileInputId = useId();
 
@@ -171,19 +166,14 @@ export const FarmerFieldDetailsPage: React.FC = () => {
 
       if (fieldData) {
         const farmId = fieldData.farmId;
-        const [telRes, analRes, diseaseRes, availRes] = await Promise.allSettled([
-          monitoringService.telemetry(farmId, fieldId),
+        const [analRes, diseaseRes, availRes] = await Promise.allSettled([
           monitoringService.listAgriculturalAnalyses(farmId, fieldId, null, 10),
           monitoringService.analyses(farmId, fieldId, null, 10),
           monitoringService.diseaseAvailability(farmId, fieldId),
         ]);
 
-        if (telRes.status === 'fulfilled' && telRes.value?.data) {
-          setRecentTelemetry(telRes.value.data);
-        }
         if (analRes.status === 'fulfilled' && analRes.value?.data?.items) {
           const items = analRes.value.data.items;
-          setRecentAnalyses(items);
           if (items.length > 0) {
             setLatestAnalysis(items[0]);
           }
@@ -275,13 +265,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
         );
       }
 
-      monitoringService
-        .telemetry(targetFarmId, targetFieldId)
-        .then((telRes) => {
-          if (telRes?.data) setRecentTelemetry(telRes.data);
-        })
-        .catch(() => {});
-
+      setHistoryRefreshKey((k) => k + 1);
       setAnalyzingField(true);
       setDataSuccessMsg(
         'All 8 measurements submitted successfully. Running AI agronomic analysis in background...'
@@ -303,6 +287,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
             initialRecord.status === 'INSUFFICIENT_DATA'
           ) {
             setAnalyzingField(false);
+            setHistoryRefreshKey((k) => k + 1);
             setDataSuccessMsg(
               'All 8 measurements submitted and field AI analysis completed successfully.'
             );
@@ -333,6 +318,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                       pollTimerRef.current = null;
                     }
                     setAnalyzingField(false);
+                    setHistoryRefreshKey((k) => k + 1);
                     if (updated.status === 'COMPLETED') {
                       setDataSuccessMsg(
                         'AI field analysis complete: Water Need and Field Status evaluated.'
@@ -424,6 +410,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       if (diseaseRes?.data?.items) {
         setDiseaseAnalyses(diseaseRes.data.items);
       }
+      setHistoryRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setDiseaseError(parseApiErrorMessage(err, 'Disease analysis request failed.'));
     } finally {
@@ -442,6 +429,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
       await monitoringService.triggerDiseaseResearch(targetFarmId, targetFieldId, analysisId);
       const updated = await monitoringService.analysis(targetFarmId, targetFieldId, analysisId);
       if (updated.data) setDiseaseResult(updated.data);
+      setHistoryRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setDiseaseError(parseApiErrorMessage(err, 'Could not trigger disease research.'));
     } finally {
@@ -466,6 +454,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
           const nextStatus = String(res.data.researchStatus || '').toUpperCase();
           if (nextStatus !== 'PENDING' && nextStatus !== 'PROCESSING') {
             window.clearInterval(timer);
+            setHistoryRefreshKey((k) => k + 1);
           }
         }
       } catch {
@@ -487,16 +476,19 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     try {
       const res = await monitoringService.createAnalysis(targetFarmId, targetFieldId);
       setLatestAnalysis(res.data || null);
-
-      const analRes = await monitoringService.analyses(targetFarmId, targetFieldId, null, 10);
-      if (analRes?.data?.items) {
-        setRecentAnalyses(analRes.data.items);
-      }
+      setHistoryRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       setAnalysisError(parseApiErrorMessage(err, 'AI analysis invocation failed.'));
     } finally {
       setRunningAnalysis(false);
     }
+  };
+
+  const scrollToFullIntelligence = () => {
+    document.getElementById('full-disease-intelligence')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
   };
 
   const fieldOverviewCards = field
@@ -541,20 +533,7 @@ export const FarmerFieldDetailsPage: React.FC = () => {
     : [];
 
   return (
-    <div className="space-y-6 max-w-[1440px] mx-auto pb-12">
-      {/* Top Breadcrumbs */}
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-2 text-xs">
-        <Link
-          to="/farmer/fields"
-          className="inline-flex items-center gap-1.5 font-bold text-primary hover:underline no-underline"
-        >
-          <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-          <span>Assigned Fields</span>
-        </Link>
-        <span className="text-on-surface-variant">/</span>
-        <span className="font-mono text-on-surface-variant break-all">{fieldId}</span>
-      </nav>
-
+    <div className="space-y-5 max-w-[1520px] mx-auto pb-12">
       {loading && <LoadingSkeleton type="dashboard" />}
 
       {!loading && error && (
@@ -573,96 +552,96 @@ export const FarmerFieldDetailsPage: React.FC = () => {
 
       {!loading && !error && field && (
         <>
-          {/* Deep Forest-Green Field Hero Banner */}
+          {/* C. Wide Field Hero Banner */}
           <div className="agro-hero-enter relative rounded-3xl overflow-hidden shadow-md border border-outline-variant/30 bg-[#103823] text-white">
             <img
               src={heroAgricultureImg}
               alt="Agricultural field landscape"
-              className="absolute inset-0 w-full h-full object-cover object-center opacity-50"
+              className="absolute inset-0 w-full h-full object-cover object-center opacity-55"
             />
             <div
               aria-hidden="true"
-              className="absolute inset-0 bg-gradient-to-r from-[#0b2b1a]/95 via-[#103823]/80 to-[#103823]/45"
+              className="absolute inset-0 bg-gradient-to-r from-[#0b2b1a]/95 via-[#103823]/80 to-[#103823]/40"
             />
 
-            <div className="relative p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-              <div className="space-y-2.5 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    to="/farmer/fields"
-                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold no-underline transition-colors"
-                  >
-                    <span className="material-symbols-outlined text-[14px]">arrow_back</span>
-                    <span>Assigned Fields</span>
-                  </Link>
+            <div className="relative px-6 py-5 sm:px-8 sm:py-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-2 min-w-0">
+                <Link
+                  to="/farmer/fields"
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold no-underline transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[14px]">arrow_back</span>
+                  <span>Assigned Fields</span>
+                </Link>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white break-words">
+                    {field.name}
+                  </h1>
                   <StatusBadge status={field.status || 'ACTIVE'} />
                 </div>
 
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white break-words">
-                  {field.name}
-                </h1>
-
-                <p className="text-xs text-emerald-100/85 break-all">
+                <p className="text-xs text-emerald-100/90 break-all">
                   Holding Farm: <span className="font-mono font-bold text-white">{field.farmId}</span>{' '}
-                  • Sector ID: <span className="font-mono">{field.fieldId}</span>
+                  <span className="mx-1.5 opacity-60">|</span>
+                  Sector ID: <span className="font-mono">{field.fieldId}</span>
                 </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 shrink-0">
-                <div className="hidden xl:flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 text-xs font-bold text-white">
-                  <span className="material-symbols-outlined text-[18px] text-emerald-300">eco</span>
-                  <span>&ldquo;Healthy Fields, Prosperous Harvest&rdquo;</span>
+              <div className="hidden lg:flex items-center gap-3 px-5 py-3.5 rounded-2xl bg-white/85 dark:bg-black/45 backdrop-blur-md border border-white/40 text-on-surface dark:text-white shadow-lg shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-primary dark:text-emerald-300 flex items-center justify-center shrink-0">
+                  <span className="material-symbols-outlined text-[20px]">eco</span>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={handleRunAiAnalysis}
-                  disabled={runningAnalysis}
-                  className="h-11 px-5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-[#082415] font-extrabold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md active:scale-95 transition-all disabled:opacity-50"
-                >
-                  <span
-                    className={`material-symbols-outlined text-[18px] ${
-                      runningAnalysis ? 'animate-spin' : ''
-                    }`}
-                  >
-                    {runningAnalysis ? 'progress_activity' : 'psychology'}
-                  </span>
-                  <span>{runningAnalysis ? 'Running AI Engine...' : 'Run Field AI Analysis'}</span>
-                </button>
+                <p className="text-xs font-extrabold leading-snug max-w-[165px]">
+                  &ldquo;Healthy Fields, Prosperous Harvest&rdquo;
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Section 1: Field Overview & Parameters */}
-          <div className="agro-hero-enter-delay-1 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-5">
+          {/* D. 1. Field Overview & Parameters + E. AI Agronomic Decision Alert */}
+          <div className="agro-hero-enter-delay-1 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[20px]">analytics</span>
-                </div>
-                <h2 className="text-sm sm:text-base font-extrabold text-on-surface uppercase tracking-wide">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-primary">eco</span>
+                <h2 className="text-sm sm:text-base font-extrabold text-on-surface">
                   1. Field Overview &amp; Parameters
                 </h2>
               </div>
+
+              <button
+                type="button"
+                onClick={handleRunAiAnalysis}
+                disabled={runningAnalysis}
+                className="h-9 px-4 rounded-full bg-[#0e3b24] hover:bg-[#175534] text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-sm active:scale-95 transition-all disabled:opacity-50"
+              >
+                <span
+                  className={`material-symbols-outlined text-[16px] ${
+                    runningAnalysis ? 'animate-spin' : ''
+                  }`}
+                >
+                  {runningAnalysis ? 'progress_activity' : 'play_circle'}
+                </span>
+                <span>{runningAnalysis ? 'Running AI Engine...' : 'Run Field AI Analysis'}</span>
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+            {/* 6 Horizontally Aligned Parameter Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {fieldOverviewCards.map((item) => (
                 <div
                   key={item.label}
-                  className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/25 flex flex-col gap-2"
+                  className="p-3.5 rounded-2xl bg-surface-container-low/70 border border-outline-variant/25 flex flex-col items-center text-center gap-1.5"
                 >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`w-7 h-7 rounded-lg ${item.tone} flex items-center justify-center shrink-0`}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">{item.icon}</span>
-                    </div>
-                    <span className="text-[11px] font-semibold text-on-surface-variant leading-tight">
-                      {item.label}
-                    </span>
+                  <div
+                    className={`w-8 h-8 rounded-xl ${item.tone} flex items-center justify-center`}
+                  >
+                    <span className="material-symbols-outlined text-[17px]">{item.icon}</span>
                   </div>
-                  <span className="text-sm font-extrabold text-on-surface break-words">
+                  <span className="text-[11px] font-medium text-on-surface-variant leading-tight">
+                    {item.label}
+                  </span>
+                  <span className="text-xs sm:text-sm font-extrabold text-on-surface break-words">
                     {item.value}
                   </span>
                 </div>
@@ -670,51 +649,24 @@ export const FarmerFieldDetailsPage: React.FC = () => {
             </div>
 
             {field.notes && (
-              <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/25 text-xs">
-                <span className="font-bold text-on-surface block mb-1">
-                  Agronomic Guidelines &amp; Notes
-                </span>
-                <p className="text-on-surface-variant leading-relaxed">{field.notes}</p>
+              <div className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/20 text-xs">
+                <span className="font-bold text-on-surface">Agronomic Notes: </span>
+                <span className="text-on-surface-variant">{field.notes}</span>
               </div>
             )}
-          </div>
 
-          {/* AI Agronomic Decision Section */}
-          <div
-            id="ai-decision"
-            className="agro-hero-enter-delay-1 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-4"
-          >
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[20px]">psychiatry</span>
-                </div>
-                <h2 className="text-sm sm:text-base font-extrabold text-on-surface uppercase tracking-wide">
-                  AI Agronomic Decision
-                </h2>
-              </div>
-              <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
-                {Boolean(latestAnalysis?.analysisId) && (
-                  <span className="font-mono bg-surface-container px-2 py-0.5 rounded text-[10px]">
-                    ID: {String(latestAnalysis?.analysisId).substring(0, 16)}...
-                  </span>
-                )}
-                {Boolean(latestAnalysis?.createdAt) && (
-                  <span>
-                    Evaluated: {new Date(String(latestAnalysis?.createdAt)).toLocaleString()}
-                  </span>
-                )}
-              </div>
-            </div>
-
+            {/* E. AI Agronomic Decision Panel */}
             {analysisError && (
-              <div className="p-3.5 rounded-2xl bg-error/10 border border-error/30 text-xs text-error flex items-center gap-2">
+              <div
+                role="alert"
+                className="p-3.5 rounded-2xl bg-error/10 border border-error/30 text-xs text-error flex items-center gap-2"
+              >
                 <span className="material-symbols-outlined text-[16px]">error</span>
                 <span>{analysisError}</span>
               </div>
             )}
 
-            {(runningAnalysis || analyzingField) && (
+            {runningAnalysis || analyzingField ? (
               <div
                 role="status"
                 aria-live="polite"
@@ -730,698 +682,455 @@ export const FarmerFieldDetailsPage: React.FC = () => {
                   </p>
                 </div>
               </div>
-            )}
-
-            {latestAnalysis ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/25 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                        Predicted Water Need
-                      </span>
-                      <div className="text-xl font-extrabold text-primary">
-                        {String(
-                          latestAnalysis.predictedWaterNeed ||
-                            latestAnalysis.waterNeed ||
-                            'Sufficient'
-                        )}
-                      </div>
-                    </div>
-                    {latestAnalysis.waterNeedConfidence !== undefined && (
-                      <div className="mt-2 text-[10px] text-on-surface-variant">
-                        Confidence: {(Number(latestAnalysis.waterNeedConfidence) * 100).toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/25 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                        Field Agronomic Status
-                      </span>
-                      <div className="text-xl font-extrabold text-on-surface">
-                        {String(
-                          latestAnalysis.predictedFieldStatus ||
-                            latestAnalysis.fieldStatus ||
-                            'Normal'
-                        )}
-                      </div>
-                    </div>
-                    {latestAnalysis.fieldStatusConfidence !== undefined && (
-                      <div className="mt-2 text-[10px] text-on-surface-variant">
-                        Confidence:{' '}
-                        {(Number(latestAnalysis.fieldStatusConfidence) * 100).toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/25 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                        AI Recommended Crop
-                      </span>
-                      <div className="text-xl font-extrabold text-secondary capitalize">
-                        {String(
-                          latestAnalysis.recommendedCrop || field.cropType || 'Optimal Match'
-                        )}
-                      </div>
-                    </div>
-                    {latestAnalysis.cropConfidence !== undefined && (
-                      <div className="mt-2 text-[10px] text-on-surface-variant">
-                        Match Confidence:{' '}
-                        {(Number(latestAnalysis.cropConfidence) * 100).toFixed(1)}%
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 rounded-2xl bg-surface-container-low border border-outline-variant/25 flex flex-col justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1">
-                        Disease Detection Engine
-                      </span>
-                      <div className="text-base font-extrabold text-on-surface">
-                        {diseaseResult?.status === 'COMPLETED'
-                          ? 'COMPLETED'
-                          : diseaseResult?.status
-                            ? String(diseaseResult.status)
-                            : diseaseAvailability?.available
-                              ? 'AVAILABLE'
-                              : String(latestAnalysis.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[10px] text-on-surface-variant">
-                      {diseaseResult?.status === 'COMPLETED' &&
-                      (diseaseResult.diseaseName || diseaseResult.predictedClass)
-                        ? `${String(
-                            diseaseResult.diseaseName || diseaseResult.predictedClass
-                          ).replace(/_/g, ' ')}${
-                            typeof diseaseResult.confidence === 'number'
-                              ? ` (${diseaseResult.confidence.toFixed(1)}%)`
-                              : ''
-                          }`
-                        : latestAnalysis.predictedDisease
-                          ? String(latestAnalysis.predictedDisease)
-                          : diseaseAvailability?.available
-                            ? 'TFLite 94-class engine ready — upload a leaf image below'
-                            : 'No unverified diagnosis fabricated'}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-secondary-container/20 border border-secondary/30 text-xs text-on-surface-variant flex items-start gap-2.5">
-                  <span className="material-symbols-outlined text-[18px] text-secondary shrink-0 mt-0.5">
-                    info
+            ) : latestAnalysis ? (
+              <div id="ai-decision" className="space-y-3 pt-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-extrabold text-on-surface uppercase tracking-wider">
+                    AI Agronomic Decision
                   </span>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <p className="font-semibold text-on-surface text-[11px]">
-                        Agronomic Rule-Derived Model Notice (label_method=agronomic_rule_v1)
-                      </p>
-                      {Boolean(latestAnalysis.tabularModelVersion) && (
-                        <span className="px-2 py-0.5 rounded bg-surface-container text-on-surface font-mono text-[10px]">
-                          Model: {String(latestAnalysis.tabularModelVersion)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] leading-relaxed">
-                      Water Need and Field Status are predicted using machine learning models
-                      trained on agronomic rule-derived labels. They provide operational stewardship
-                      guidance and are not independently validated agronomic ground truth.
-                    </p>
+                  <div className="flex items-center gap-2 text-[11px] text-on-surface-variant">
+                    {Boolean(latestAnalysis.analysisId) && (
+                      <span className="font-mono bg-surface-container px-2 py-0.5 rounded text-[10px]">
+                        ID: {String(latestAnalysis.analysisId).substring(0, 16)}...
+                      </span>
+                    )}
+                    {Boolean(latestAnalysis.createdAt) && (
+                      <span>
+                        Evaluated: {new Date(String(latestAnalysis.createdAt)).toLocaleString()}
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {Array.isArray(latestAnalysis.measurements) &&
-                  (latestAnalysis.measurements as Record<string, unknown>[]).length > 0 && (
-                    <div className="pt-1">
-                      <span className="text-[11px] font-bold text-on-surface uppercase tracking-wider block mb-2">
-                        Underlying Physical Telemetry Evaluated
-                      </span>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {(latestAnalysis.measurements as Record<string, unknown>[])
-                          .slice(0, 8)
-                          .map((m, idx) => (
-                            <div
-                              key={idx}
-                              className="p-2.5 rounded-xl bg-surface-container-low border border-outline-variant/20 text-xs"
-                            >
-                              <span className="text-[10px] text-on-surface-variant block font-medium">
-                                {String(m.measurementType || 'MEASUREMENT')}
-                              </span>
-                              <span className="font-bold text-on-surface text-xs">
-                                {String(m.value ?? m.rawValue ?? '—')} {String(m.unit || '')}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/25">
+                    <span className="text-[10px] font-bold uppercase text-on-surface-variant block">
+                      Predicted Water Need
+                    </span>
+                    <span className="text-lg font-extrabold text-primary">
+                      {String(
+                        latestAnalysis.predictedWaterNeed || latestAnalysis.waterNeed || 'Sufficient'
+                      )}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/25">
+                    <span className="text-[10px] font-bold uppercase text-on-surface-variant block">
+                      Field Agronomic Status
+                    </span>
+                    <span className="text-lg font-extrabold text-on-surface">
+                      {String(
+                        latestAnalysis.predictedFieldStatus ||
+                          latestAnalysis.fieldStatus ||
+                          'Normal'
+                      )}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/25">
+                    <span className="text-[10px] font-bold uppercase text-on-surface-variant block">
+                      AI Recommended Crop
+                    </span>
+                    <span className="text-lg font-extrabold text-secondary capitalize">
+                      {String(latestAnalysis.recommendedCrop || field.cropType || 'Optimal Match')}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-surface-container-low border border-outline-variant/25">
+                    <span className="text-[10px] font-bold uppercase text-on-surface-variant block">
+                      Disease Detection Engine
+                    </span>
+                    <span className="text-sm font-extrabold text-on-surface">
+                      {diseaseResult?.status
+                        ? String(diseaseResult.status)
+                        : diseaseAvailability?.available
+                          ? 'AVAILABLE'
+                          : String(latestAnalysis.diseaseDetectionStatus || 'MODEL_UNAVAILABLE')}
+                    </span>
+                  </div>
+                </div>
               </div>
             ) : (
-              <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex flex-col sm:flex-row items-center justify-between gap-4">
+              /* Pale-Yellow Alert Panel Matching Reference */
+              <div
+                id="ai-decision"
+                className="px-4 py-3 rounded-2xl bg-[#fef9e7] dark:bg-[#2a2410] border border-[#f4e3a1] dark:border-[#5c4d18] flex flex-col md:flex-row md:items-center justify-between gap-3"
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
-                    <span className="material-symbols-outlined text-[22px]">monitoring</span>
+                  <div className="w-8 h-8 rounded-full bg-amber-400/25 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[18px]">error</span>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-on-surface">
+                    <p className="text-xs font-extrabold text-on-surface">AI Agronomic Decision</p>
+                    <p className="text-[11px] text-on-surface-variant">
                       No Field Status Evaluations Recorded Yet
-                    </p>
-                    <p className="text-[11px] text-on-surface-variant mt-0.5">
-                      Upload field measurements below and click &ldquo;Run Field AI Analysis&rdquo;
-                      to compute Water Need and Field Status.
                     </p>
                   </div>
                 </div>
+                <p className="text-[11px] text-on-surface-variant md:text-right">
+                  Upload field measurements below and click{' '}
+                  <strong className="text-on-surface">&ldquo;Run Field AI Analysis&rdquo;</strong>{' '}
+                  to compute Water Need and Field Status.
+                </p>
               </div>
             )}
           </div>
 
-          {/* Section 2: Upload Agricultural Field Data Form */}
-          <div className="agro-hero-enter-delay-2 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-[20px]">upload_file</span>
-              </div>
-              <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-on-surface uppercase tracking-wide">
-                  2. Upload Agricultural Field Data
-                </h2>
-                <p className="text-xs text-on-surface-variant">
-                  Submit physical and soil telemetry collected from this field sector. Each value is
-                  validated against agronomic domain thresholds.
-                </p>
+          {/* F. MAIN TWO-COLUMN ROW: Left Telemetry Form + Right Disease Intelligence */}
+          <div className="agro-hero-enter-delay-2 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+            {/* LEFT COLUMN: 2. Upload Agricultural Field Data */}
+            <div className="lg:col-span-6 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm flex flex-col justify-between gap-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                    <span className="material-symbols-outlined text-[18px]">cloud_upload</span>
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-extrabold text-on-surface">
+                      2. Upload Agricultural Field Data
+                    </h2>
+                    <p className="text-[11px] text-on-surface-variant">
+                      Submit physical and soil telemetry collected from this field sector. Each
+                      value is validated against agronomic domain thresholds.
+                    </p>
+                  </div>
+                </div>
+
+                {dataSuccessMsg && (
+                  <div
+                    role="status"
+                    className="p-3 rounded-xl bg-primary/10 border border-primary/30 text-xs font-semibold text-primary flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                    <span>{dataSuccessMsg}</span>
+                  </div>
+                )}
+
+                {dataErrorMsg && (
+                  <div
+                    role="alert"
+                    className="p-3 rounded-xl bg-error/10 border border-error/30 text-xs font-semibold text-error flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">error</span>
+                    <span>{dataErrorMsg}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmitData} className="space-y-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {(
+                      [
+                        {
+                          id: 'field-n',
+                          key: 'n',
+                          label: 'Nitrogen (N)',
+                          unit: 'mg/kg',
+                          step: '0.01',
+                          placeholder: 'e.g. 90',
+                        },
+                        {
+                          id: 'field-p',
+                          key: 'p',
+                          label: 'Phosphorus (P)',
+                          unit: 'mg/kg',
+                          step: '0.01',
+                          placeholder: 'e.g. 42',
+                        },
+                        {
+                          id: 'field-k',
+                          key: 'k',
+                          label: 'Potassium (K)',
+                          unit: 'mg/kg',
+                          step: '0.01',
+                          placeholder: 'e.g. 43',
+                        },
+                        {
+                          id: 'field-temp',
+                          key: 'temperature',
+                          label: 'Temperature',
+                          unit: '°C',
+                          step: '0.1',
+                          placeholder: 'e.g. 24.5',
+                        },
+                        {
+                          id: 'field-hum',
+                          key: 'humidity',
+                          label: 'Relative Humidity',
+                          unit: '%',
+                          step: '0.1',
+                          placeholder: 'e.g. 78.0',
+                        },
+                        {
+                          id: 'field-ph',
+                          key: 'ph',
+                          label: 'Soil pH',
+                          unit: '0 - 14',
+                          step: '0.01',
+                          placeholder: 'e.g. 6.5',
+                        },
+                        {
+                          id: 'field-rain',
+                          key: 'rainfall',
+                          label: 'Rainfall',
+                          unit: 'mm',
+                          step: '0.1',
+                          placeholder: 'e.g. 150.0',
+                        },
+                        {
+                          id: 'field-moist',
+                          key: 'soilMoisture',
+                          label: 'Soil Moisture',
+                          unit: '%',
+                          step: '0.1',
+                          placeholder: 'e.g. 45.2',
+                        },
+                      ] as const
+                    ).map((inp) => (
+                      <div key={inp.id} className="space-y-1">
+                        <label
+                          htmlFor={inp.id}
+                          className="text-[11px] font-bold text-on-surface block truncate"
+                        >
+                          {inp.label}
+                        </label>
+                        <div className="relative flex items-center">
+                          <input
+                            id={inp.id}
+                            type="number"
+                            step={inp.step}
+                            placeholder={inp.placeholder}
+                            value={formData[inp.key]}
+                            onChange={(e) =>
+                              setFormData({ ...formData, [inp.key]: e.target.value })
+                            }
+                            className={`w-full h-9 pl-2.5 pr-11 rounded-xl bg-surface-container-low border text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 ${
+                              formErrors[inp.key] ? 'border-error' : 'border-outline-variant/40'
+                            }`}
+                          />
+                          <span className="absolute right-2.5 text-[10px] font-semibold text-on-surface-variant pointer-events-none">
+                            {inp.unit}
+                          </span>
+                        </div>
+                        {formErrors[inp.key] && (
+                          <p className="text-[10px] text-error font-medium">
+                            {formErrors[inp.key]}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submittingData}
+                    className="w-full h-11 rounded-full bg-gradient-to-r from-[#155a36] to-[#1e7346] hover:from-[#1b6e42] hover:to-[#248552] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-[0.99] transition-all disabled:opacity-50"
+                  >
+                    <span
+                      className={`material-symbols-outlined text-[16px] ${
+                        submittingData ? 'animate-spin' : ''
+                      }`}
+                    >
+                      {submittingData ? 'progress_activity' : 'send'}
+                    </span>
+                    <span>
+                      {submittingData ? 'Submitting Measurements...' : 'Submit Field Telemetry'}
+                    </span>
+                  </button>
+                </form>
               </div>
             </div>
 
-            {dataSuccessMsg && (
-              <div
-                role="status"
-                className="p-3.5 rounded-2xl bg-primary/10 border border-primary/30 text-xs font-semibold text-primary flex items-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                <span>{dataSuccessMsg}</span>
-              </div>
-            )}
-
-            {dataErrorMsg && (
-              <div
-                role="alert"
-                className="p-3.5 rounded-2xl bg-error/10 border border-error/30 text-xs font-semibold text-error flex items-center gap-2"
-              >
-                <span className="material-symbols-outlined text-[18px]">error</span>
-                <span>{dataErrorMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmitData} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {(
-                  [
-                    {
-                      id: 'field-n',
-                      key: 'n',
-                      label: 'Nitrogen (N)',
-                      unit: 'mg/kg',
-                      step: '0.01',
-                      placeholder: 'e.g. 90',
-                    },
-                    {
-                      id: 'field-p',
-                      key: 'p',
-                      label: 'Phosphorus (P)',
-                      unit: 'mg/kg',
-                      step: '0.01',
-                      placeholder: 'e.g. 42',
-                    },
-                    {
-                      id: 'field-k',
-                      key: 'k',
-                      label: 'Potassium (K)',
-                      unit: 'mg/kg',
-                      step: '0.01',
-                      placeholder: 'e.g. 43',
-                    },
-                    {
-                      id: 'field-temp',
-                      key: 'temperature',
-                      label: 'Temperature',
-                      unit: '°C',
-                      step: '0.1',
-                      placeholder: 'e.g. 24.5',
-                    },
-                    {
-                      id: 'field-hum',
-                      key: 'humidity',
-                      label: 'Relative Humidity',
-                      unit: '%',
-                      step: '0.1',
-                      placeholder: 'e.g. 78.0',
-                    },
-                    {
-                      id: 'field-ph',
-                      key: 'ph',
-                      label: 'Soil pH',
-                      unit: '0 - 14',
-                      step: '0.01',
-                      placeholder: 'e.g. 6.5',
-                    },
-                    {
-                      id: 'field-rain',
-                      key: 'rainfall',
-                      label: 'Rainfall',
-                      unit: 'mm',
-                      step: '0.1',
-                      placeholder: 'e.g. 150.0',
-                    },
-                    {
-                      id: 'field-moist',
-                      key: 'soilMoisture',
-                      label: 'Soil Moisture',
-                      unit: '%',
-                      step: '0.1',
-                      placeholder: 'e.g. 45.2',
-                    },
-                  ] as const
-                ).map((inp) => (
-                  <div key={inp.id} className="space-y-1">
-                    <label
-                      htmlFor={inp.id}
-                      className="text-xs font-bold text-on-surface flex items-center justify-between"
-                    >
-                      <span>{inp.label}</span>
-                      <span className="text-[10px] font-semibold text-on-surface-variant">
-                        {inp.unit}
-                      </span>
-                    </label>
-                    <input
-                      id={inp.id}
-                      type="number"
-                      step={inp.step}
-                      placeholder={inp.placeholder}
-                      value={formData[inp.key]}
-                      onChange={(e) => setFormData({ ...formData, [inp.key]: e.target.value })}
-                      className={`w-full h-10 px-3 rounded-xl bg-surface-container-low border text-xs text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/40 ${
-                        formErrors[inp.key] ? 'border-error' : 'border-outline-variant/40'
-                      }`}
-                    />
-                    {formErrors[inp.key] && (
-                      <p className="text-[10px] text-error font-medium">{formErrors[inp.key]}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="submit"
-                disabled={submittingData}
-                className="w-full h-11 rounded-full bg-[#155a36] hover:bg-[#1b6e42] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-[0.99] transition-all disabled:opacity-50"
-              >
-                <span
-                  className={`material-symbols-outlined text-[16px] ${
-                    submittingData ? 'animate-spin' : ''
-                  }`}
-                >
-                  {submittingData ? 'progress_activity' : 'send'}
-                </span>
-                <span>
-                  {submittingData ? 'Submitting Measurements...' : 'Submit Field Telemetry'}
-                </span>
-              </button>
-            </form>
+            {/* RIGHT COLUMN: Disease Intelligence Summary Card (or Animated Processing) */}
+            <div className="lg:col-span-6 flex flex-col">
+              {analyzingDisease ? (
+                <LeafDiseaseProcessingCard
+                  imagePreview={imagePreview}
+                  fileName={imageFile?.name}
+                  step={diseaseStep}
+                />
+              ) : (
+                <DiseaseIntelligenceSummaryPanel
+                  analysis={diseaseResult}
+                  fieldCropType={field.cropType}
+                  imagePreview={imagePreview}
+                  onViewFullAnalysis={scrollToFullIntelligence}
+                  onRetry={imageFile ? handleUploadAndDetectDisease : undefined}
+                />
+              )}
+            </div>
           </div>
 
-          {/* Section 3: Leaf Image Upload & Disease Intelligence */}
-          <div className="agro-hero-enter-delay-3 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <span className="material-symbols-outlined text-[20px]">image_search</span>
-              </div>
+          {/* G & H. BOTTOM TWO-COLUMN ROW: Left Leaf Upload + Right Chronological History */}
+          <div className="agro-hero-enter-delay-3 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+            {/* LEFT COLUMN: 3. Leaf Disease Detection Upload */}
+            <div className="lg:col-span-5 bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-4">
               <div>
-                <h2 className="text-sm sm:text-base font-extrabold text-on-surface uppercase tracking-wide">
-                  3. Leaf Disease Detection Upload
-                </h2>
-                <p className="text-xs text-on-surface-variant">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[19px] text-primary">
+                    image_search
+                  </span>
+                  <h2 className="text-sm sm:text-base font-extrabold text-on-surface">
+                    3. Leaf Disease Detection Upload
+                  </h2>
+                </div>
+                <p className="text-[11px] text-on-surface-variant mt-1">
                   Upload clear leaf photographs (PNG or JPEG, maximum 8 MiB) collected from this
                   field zone for inspection.
                 </p>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Upload & Preview Column (5 cols) */}
-              <div className="lg:col-span-5 space-y-3">
-                <label
-                  htmlFor={fileInputId}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={() => setDragActive(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragActive(false);
-                    processSelectedFile(e.dataTransfer.files?.[0]);
-                  }}
-                  className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-                    dragActive
-                      ? 'border-primary bg-primary/5 scale-[1.01]'
-                      : 'border-outline-variant/50 hover:border-primary hover:bg-surface-container-low'
-                  }`}
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mb-2">
-                    <span className="material-symbols-outlined text-[28px]">
-                      add_photo_alternate
-                    </span>
-                  </div>
-                  <span className="text-xs font-bold text-on-surface">
-                    Drag &amp; drop or click to select leaf image
-                  </span>
-                  <span className="text-[11px] text-on-surface-variant mt-1">
-                    PNG or JPEG format (max 8 MiB)
-                  </span>
-                  <input
-                    id={fileInputId}
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    onChange={handleImageSelect}
-                    className="hidden"
-                  />
-                </label>
-
-                {imageFileError && (
-                  <p role="alert" className="text-xs text-error font-semibold">
-                    {imageFileError}
-                  </p>
-                )}
-
-                {imageFile && (
-                  <div className="flex items-center justify-between gap-2 p-3 rounded-xl bg-surface-container-low border border-outline-variant/25 text-xs">
-                    <span className="font-semibold text-on-surface truncate max-w-[200px]">
-                      {imageFile.name}
-                    </span>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-on-surface-variant">
-                        {(imageFile.size / 1024).toFixed(1)} KB
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleClearImage}
-                        disabled={analyzingDisease}
-                        className="text-[11px] font-bold text-error hover:underline cursor-pointer disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleUploadAndDetectDisease}
-                  disabled={!imageFile || analyzingDisease}
-                  className="w-full h-11 rounded-full bg-[#155a36] hover:bg-[#1b6e42] text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-[0.99] transition-all disabled:opacity-50"
-                >
-                  <span
-                    className={`material-symbols-outlined text-[16px] ${
-                      analyzingDisease ? 'animate-spin' : ''
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-stretch">
+                {/* Dropzone */}
+                <div className="sm:col-span-7 flex flex-col gap-2">
+                  <label
+                    htmlFor={fileInputId}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragActive(false);
+                      processSelectedFile(e.dataTransfer.files?.[0]);
+                    }}
+                    className={`flex-1 min-h-[150px] border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                      dragActive
+                        ? 'border-primary bg-primary/5 scale-[1.01]'
+                        : 'border-outline-variant/50 hover:border-primary hover:bg-surface-container-low'
                     }`}
                   >
-                    {analyzingDisease ? 'progress_activity' : 'cloud_upload'}
-                  </span>
-                  <span>
-                    {diseaseStep === 'uploading'
-                      ? 'Uploading Leaf Image...'
-                      : diseaseStep === 'inferring'
-                        ? 'Running Disease Model...'
-                        : 'Upload & Analyze Leaf'}
-                  </span>
-                </button>
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center mb-2">
+                      <span className="material-symbols-outlined text-[24px]">
+                        add_photo_alternate
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-on-surface">
+                      Drag &amp; drop or click to select leaf image
+                    </span>
+                    <span className="text-[10px] text-on-surface-variant mt-1">
+                      PNG or JPEG format (max 8 MiB)
+                    </span>
+                    <input
+                      id={fileInputId}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      onChange={handleImageSelect}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
 
-                {/* Preview when not actively processing */}
-                {!analyzingDisease &&
-                  (imagePreview ? (
-                    <div className="rounded-2xl overflow-hidden border border-outline-variant/30 bg-surface-container-low h-48 flex items-center justify-center">
+                {/* Upload Button + Preview */}
+                <div className="sm:col-span-5 flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleUploadAndDetectDisease}
+                    disabled={!imageFile || analyzingDisease}
+                    className="w-full h-10 rounded-full bg-[#155a36] hover:bg-[#1b6e42] text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    <span
+                      className={`material-symbols-outlined text-[16px] ${
+                        analyzingDisease ? 'animate-spin' : ''
+                      }`}
+                    >
+                      {analyzingDisease ? 'progress_activity' : 'cloud_upload'}
+                    </span>
+                    <span>
+                      {diseaseStep === 'uploading'
+                        ? 'Uploading...'
+                        : diseaseStep === 'inferring'
+                          ? 'Analyzing...'
+                          : 'Upload & Analyze'}
+                    </span>
+                  </button>
+
+                  {imagePreview ? (
+                    <div className="flex-1 min-h-[104px] rounded-2xl overflow-hidden border border-outline-variant/30 bg-surface-container-low flex items-center justify-center p-1">
                       <img
                         src={imagePreview}
                         alt="Leaf Preview"
-                        className="max-h-full max-w-full object-contain"
+                        className="max-h-28 max-w-full object-contain rounded-xl"
                       />
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-outline-variant/20 bg-surface-container-low h-48 flex flex-col items-center justify-center text-on-surface-variant text-xs">
-                      <span className="material-symbols-outlined text-[32px] mb-1">preview</span>
+                    <div className="flex-1 min-h-[104px] rounded-2xl border border-outline-variant/25 bg-surface-container-low flex flex-col items-center justify-center text-on-surface-variant text-[11px] p-2 text-center">
+                      <span className="material-symbols-outlined text-[24px] mb-0.5">preview</span>
                       <span>No image selected</span>
                     </div>
-                  ))}
-              </div>
-
-              {/* Right Processing / Result Column (7 cols) */}
-              <div className="lg:col-span-7 space-y-4">
-                {analyzingDisease && (
-                  <LeafDiseaseProcessingCard
-                    imagePreview={imagePreview}
-                    fileName={imageFile?.name}
-                    step={diseaseStep}
-                  />
-                )}
-
-                {diseaseError && (
-                  <div
-                    role="alert"
-                    className="p-3.5 rounded-2xl bg-error/10 border border-error/30 text-xs text-error flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-[16px]">error</span>
-                      <span>{diseaseError}</span>
-                    </div>
-                    {imageFile && (
-                      <button
-                        type="button"
-                        onClick={handleUploadAndDetectDisease}
-                        disabled={analyzingDisease}
-                        className="px-3 py-1.5 rounded-lg bg-primary text-on-primary text-[11px] font-bold cursor-pointer shrink-0 disabled:opacity-50"
-                      >
-                        Retry
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {!analyzingDisease && (
-                  <DiseaseDetectionCard
-                    analysis={diseaseResult}
-                    fieldCropType={field.cropType}
-                    onRetry={imageFile ? handleUploadAndDetectDisease : undefined}
-                    onTriggerResearch={handleTriggerResearch}
-                    researchBusy={researchBusy}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Section 6: Recent Quick Submissions & Diagnostic History */}
-          <div className="bg-surface-container-lowest rounded-3xl border border-outline-variant/30 p-5 sm:p-6 shadow-sm space-y-4">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[20px]">history</span>
+                  )}
                 </div>
-                <h2 className="text-sm sm:text-base font-extrabold text-on-surface uppercase tracking-wide">
-                  6. Submissions &amp; Diagnostic History
-                </h2>
               </div>
-              <div className="flex flex-wrap items-center gap-1 p-1 bg-surface-container-low rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => setHistoryTab('analyses')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    historyTab === 'analyses'
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
+
+              {imageFileError && (
+                <p role="alert" className="text-xs text-error font-semibold">
+                  {imageFileError}
+                </p>
+              )}
+
+              {imageFile && (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-surface-container-low border border-outline-variant/25 text-xs">
+                  <span className="font-semibold text-on-surface truncate max-w-[180px]">
+                    {imageFile.name}
+                  </span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-on-surface-variant">
+                      {(imageFile.size / 1024).toFixed(1)} KB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleClearImage}
+                      disabled={analyzingDisease}
+                      className="text-[11px] font-bold text-error hover:underline cursor-pointer disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {diseaseError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl bg-error/10 border border-error/30 text-xs text-error flex items-center justify-between gap-2"
                 >
-                  AI Analyses ({recentAnalyses.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHistoryTab('disease')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    historyTab === 'disease'
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Disease Detections ({diseaseAnalyses.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHistoryTab('telemetry')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    historyTab === 'telemetry'
-                      ? 'bg-primary text-on-primary shadow-xs'
-                      : 'text-on-surface-variant hover:text-on-surface'
-                  }`}
-                >
-                  Telemetry Log ({recentTelemetry.length})
-                </button>
-              </div>
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px]">error</span>
+                    <span>{diseaseError}</span>
+                  </div>
+                  {imageFile && (
+                    <button
+                      type="button"
+                      onClick={handleUploadAndDetectDisease}
+                      disabled={analyzingDisease}
+                      className="px-2.5 py-1 rounded-lg bg-primary text-on-primary text-[11px] font-bold cursor-pointer shrink-0 disabled:opacity-50"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
-            {historyTab === 'disease' && (
-              <div className="space-y-3">
-                {diseaseAnalyses.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant text-center py-6">
-                    No crop leaf disease detections recorded.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-outline-variant/15">
-                    {diseaseAnalyses.map((item, idx) => {
-                      const conf = parseConfidencePercent(item);
-                      const dName = item.diseaseName || item.predictedClass;
-                      return (
-                        <div
-                          key={String(item.id || item.analysisId || idx)}
-                          className="py-3 flex flex-wrap items-center justify-between gap-4 hover:bg-surface-container-low/40 px-2 rounded-xl transition-colors"
-                        >
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-bold text-on-surface font-mono">
-                                {String(item.id || item.analysisId || 'Analysis').substring(0, 18)}
-                                ...
-                              </span>
-                              <StatusBadge status={String(item.status || 'COMPLETED')} />
-                              {item.status === 'COMPLETED' && typeof item.isHealthy === 'boolean' && (
-                                <span
-                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                    item.isHealthy
-                                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                      : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                  }`}
-                                >
-                                  {item.isHealthy ? 'Healthy' : 'Disease Detected'}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-on-surface-variant">
-                              {item.createdAt
-                                ? new Date(String(item.createdAt)).toLocaleString()
-                                : 'Recent'}
-                              {item.modelVersion ? ` • ${String(item.modelVersion)}` : ''}
-                            </p>
-                          </div>
-                          <div className="text-right text-xs">
-                            {item.status === 'COMPLETED' && dName ? (
-                              <span className="font-bold text-primary">
-                                {formatDiseaseLabel(String(dName))}
-                                {conf !== null ? ` (${conf.toFixed(1)}%)` : ''}
-                              </span>
-                            ) : (
-                              <span className="text-on-surface-variant">
-                                {String(item.errorMessage || item.status || '—')}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {historyTab === 'analyses' && (
-              <div className="space-y-3">
-                {recentAnalyses.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant text-center py-6">
-                    No previous AI analyses recorded.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-outline-variant/15">
-                    {recentAnalyses.map((item, idx) => (
-                      <div
-                        key={String(item.id || item.analysisId || idx)}
-                        className="py-3 flex items-center justify-between gap-4 hover:bg-surface-container-low/40 px-2 rounded-xl transition-colors"
-                      >
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-on-surface font-mono">
-                              {String(item.id || item.analysisId || 'Analysis').substring(0, 16)}...
-                            </span>
-                            <StatusBadge status={String(item.status || 'COMPLETED')} />
-                          </div>
-                          <p className="text-[11px] text-on-surface-variant">
-                            {item.createdAt
-                              ? new Date(String(item.createdAt)).toLocaleString()
-                              : 'Recent'}{' '}
-                            • Type: {String(item.analysisType || 'AGRICULTURAL')}
-                          </p>
-                        </div>
-                        <div className="text-right text-xs">
-                          {item.predictedWaterNeed ? (
-                            <span className="font-semibold text-primary">
-                              Water: {String(item.predictedWaterNeed)}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant">Summary</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {historyTab === 'telemetry' && (
-              <div className="space-y-3">
-                {recentTelemetry.length === 0 ? (
-                  <p className="text-xs text-on-surface-variant text-center py-6">
-                    No telemetry readings recorded.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-outline-variant/15">
-                    {recentTelemetry.map((item, idx) => (
-                      <div
-                        key={String(item.id || item.telemetryId || idx)}
-                        className="py-2.5 flex items-center justify-between gap-4 hover:bg-surface-container-low/40 px-2 rounded-xl transition-colors"
-                      >
-                        <div className="space-y-0.5">
-                          <span className="text-xs font-semibold text-on-surface">
-                            {String(item.measurementType || 'MEASUREMENT')}
-                          </span>
-                          <p className="text-[11px] text-on-surface-variant">
-                            Observed:{' '}
-                            {item.observedAt
-                              ? new Date(String(item.observedAt)).toLocaleString()
-                              : '—'}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-xs font-bold text-primary">
-                            {String(item.rawValue ?? item.value ?? '—')} {String(item.unit || '')}
-                          </span>
-                          <span
-                            className={`block text-[10px] font-semibold ${
-                              item.validationStatus === 'VALID' ? 'text-primary' : 'text-error'
-                            }`}
-                          >
-                            {String(item.validationStatus || 'RECORDED')}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            {/* RIGHT COLUMN: 6. Submissions & Diagnostic History (Preserved Chronological Records) */}
+            <div className="lg:col-span-7">
+              <FieldHistoryTabs
+                farmId={field.farmId}
+                fieldId={field.fieldId}
+                refreshKey={historyRefreshKey}
+              />
+            </div>
           </div>
 
-          {/* Full-Width Unified Field Intelligence & Preserved Chronological Records */}
-          <UnifiedFieldIntelligencePanel farmId={field.farmId} fieldId={field.fieldId} />
-          <FieldHistoryTabs farmId={field.farmId} fieldId={field.fieldId} />
+          {/* FULL DETAILED DISEASE INTELLIGENCE (Sections ক–ঝ, Research Papers, Portals, Advisory) */}
+          <div id="full-disease-intelligence" className="space-y-4 pt-2">
+            <DiseaseDetectionCard
+              analysis={diseaseResult}
+              fieldCropType={field.cropType}
+              onRetry={imageFile ? handleUploadAndDetectDisease : undefined}
+              onTriggerResearch={handleTriggerResearch}
+              researchBusy={researchBusy}
+              researchHistory={diseaseAnalyses}
+            />
+            <UnifiedFieldIntelligencePanel farmId={field.farmId} fieldId={field.fieldId} />
+          </div>
         </>
       )}
     </div>
