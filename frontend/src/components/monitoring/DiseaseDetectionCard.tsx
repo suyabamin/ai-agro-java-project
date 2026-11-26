@@ -180,6 +180,7 @@ const EvidenceBlockList: React.FC<EvidenceBlockListProps> = ({
 interface DiseaseDetectionCardProps {
   title?: string;
   analysis: MonitoringRecord | null;
+  fieldCropType?: string | null;
   onRetry?: () => void;
   onTriggerResearch?: (analysisId: string) => void;
   researchBusy?: boolean;
@@ -189,6 +190,7 @@ interface DiseaseDetectionCardProps {
 export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
   title = 'Disease Intelligence',
   analysis,
+  fieldCropType,
   onRetry,
   onTriggerResearch,
   researchBusy = false,
@@ -430,6 +432,32 @@ export const DiseaseDetectionCard: React.FC<DiseaseDetectionCardProps> = ({
                 {ui.timestampLabel}: {timestamp ? new Date(String(timestamp)).toLocaleString() : '—'}
               </span>
             </div>
+
+            {fieldCropType &&
+              cropLabel &&
+              cropLabel.toLowerCase() !== 'crop' &&
+              fieldCropType.trim().toLowerCase() !== cropLabel.trim().toLowerCase() && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/35 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+                    warning
+                  </span>
+                  <div className="space-y-0.5">
+                    <p className="font-bold">
+                      {lang === 'bn'
+                        ? `ফসলের সাথে শনাক্তকৃত ফলাফলের অমিল: এই জমি "${fieldCropType}" হিসেবে নিবন্ধিত, কিন্তু মডেল "${cropLabel}" শনাক্ত করেছে।`
+                        : `Crop/Detection Mismatch: This field is registered as "${fieldCropType}", while the model detected "${cropLabel}".`}
+                    </p>
+                    <p className="text-[11px] opacity-90">
+                      {lang === 'bn'
+                        ? 'মূল মডেলের ফলাফল অপরিবর্তিত রাখা হয়েছে। সঠিক পাতার ছবি যাচাই করুন অথবা কৃষি কর্মকর্তার পরামর্শ নিন।'
+                        : 'Original model output is preserved below. Verify the uploaded leaf photo or consult an extension officer.'}
+                    </p>
+                  </div>
+                </div>
+              )}
           </section>
 
           {/* Research & Advisory Section */}

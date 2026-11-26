@@ -184,6 +184,35 @@
   }
 }
 
+@keyframes agroLeafPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@keyframes agroRingPulse {
+  0%, 100% {
+    transform: scale(0.97);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.03);
+    opacity: 0.95;
+  }
+}
+
+@keyframes agroIndeterminate {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(260%, 0, 0);
+  }
+}
+
 .agro-hero-enter {
   animation: agroHeroFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -206,6 +235,18 @@
 
 .agro-scan-sweep {
   animation: agroScanSweep 3.8s ease-in-out infinite;
+}
+
+.agro-leaf-pulse {
+  animation: agroLeafPulse 2.4s ease-in-out infinite;
+}
+
+.agro-ring-pulse {
+  animation: agroRingPulse 2s ease-in-out infinite;
+}
+
+.agro-indeterminate-bar {
+  animation: agroIndeterminate 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 .agro-reveal {
@@ -232,7 +273,10 @@ html {
   .agro-hero-enter-delay-2,
   .agro-hero-enter-delay-3,
   .agro-float-gentle,
-  .agro-scan-sweep {
+  .agro-scan-sweep,
+  .agro-leaf-pulse,
+  .agro-ring-pulse,
+  .agro-indeterminate-bar {
     animation: none !important;
   }
   .agro-reveal {
